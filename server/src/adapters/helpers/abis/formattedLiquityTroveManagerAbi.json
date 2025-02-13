@@ -1,0 +1,168 @@
+{
+  "TroveOperation": {
+    "topic": "TroveOperation(uint256,uint8,uint256,uint256,uint256,int256,uint256,int256)",
+    "abi": "event TroveOperation(uint256 indexed _troveId, uint8 _operation, uint256 _annualInterestRate, uint256 _debtIncreaseFromRedist, uint256 _debtIncreaseFromUpfrontFee, int256 _debtChangeFromOperation, uint256 _collIncreaseFromRedist, int256 _collChangeFromOperation)",
+    "keys": {
+      "troveId": "_troveId",
+      "operation": "_operation",
+      "annualInterestRate": "_annualInterestRate",
+      "debtIncreaseFromRedist": "_debtIncreaseFromRedist",
+      "debtIncreaseFromUpfrontFee": "_debtIncreaseFromUpfrontFee",
+      "debtChangeFromOperation": "_debtChangeFromOperation",
+      "collIncreaseFromRedist": "_collIncreaseFromRedist",
+      "collChangeFromOperation": "_collChangeFromOperation"
+    }
+  },
+  "ActivePoolAddressChanged": {
+    "topic": "ActivePoolAddressChanged(address)",
+    "abi": "event ActivePoolAddressChanged(address indexed _newActivePoolAddress)",
+    "keys": {
+      "newActivePoolAddress": "_newActivePoolAddress"
+    }
+  },
+  "BatchUpdated": {
+    "topic": "BatchUpdated(address,uint8,uint256,uint256,uint256,uint256,uint256,uint256)",
+    "abi": "event BatchUpdated(address indexed _interestBatchManager, uint8 _operation, uint256 _debt, uint256 _coll, uint256 _annualInterestRate, uint256 _annualManagementFee, uint256 _totalDebtShares, uint256 _debtIncreaseFromUpfrontFee)",
+    "keys": {
+      "interestBatchManager": "_interestBatchManager",
+      "operation": "_operation",
+      "debt": "_debt",
+      "coll": "_coll",
+      "annualInterestRate": "_annualInterestRate",
+      "annualManagementFee": "_annualManagementFee",
+      "totalDebtShares": "_totalDebtShares",
+      "debtIncreaseFromUpfrontFee": "_debtIncreaseFromUpfrontFee"
+    }
+  },
+  "BatchedTroveUpdated": {
+    "topic": "BatchedTroveUpdated(uint256,address,uint256,uint256,uint256,uint256,uint256)",
+    "abi": "event BatchedTroveUpdated(uint256 indexed _troveId, address _interestBatchManager, uint256 _batchDebtShares, uint256 _coll, uint256 _stake, uint256 _snapshotOfTotalCollRedist, uint256 _snapshotOfTotalDebtRedist)",
+    "keys": {
+      "troveId": "_troveId",
+      "interestBatchManager": "_interestBatchManager",
+      "batchDebtShares": "_batchDebtShares",
+      "coll": "_coll",
+      "stake": "_stake",
+      "snapshotOfTotalCollRedist": "_snapshotOfTotalCollRedist",
+      "snapshotOfTotalDebtRedist": "_snapshotOfTotalDebtRedist"
+    }
+  },
+  "BoldTokenAddressChanged": {
+    "topic": "BoldTokenAddressChanged(address)",
+    "abi": "event BoldTokenAddressChanged(address indexed _newBoldTokenAddress)",
+    "keys": {
+      "newBoldTokenAddress": "_newBoldTokenAddress"
+    }
+  },
+  "BorrowerOperationsAddressChanged": {
+    "topic": "BorrowerOperationsAddressChanged(address)",
+    "abi": "event BorrowerOperationsAddressChanged(address indexed _newBorrowerOperationsAddress)",
+    "keys": {
+      "newBorrowerOperationsAddress": "_newBorrowerOperationsAddress"
+    }
+  },
+  "CollSurplusPoolAddressChanged": {
+    "topic": "CollSurplusPoolAddressChanged(address)",
+    "abi": "event CollSurplusPoolAddressChanged(address indexed _collSurplusPoolAddress)",
+    "keys": {
+      "collSurplusPoolAddress": "_collSurplusPoolAddress"
+    }
+  },
+  "CollateralRegistryAddressChanged": {
+    "topic": "CollateralRegistryAddressChanged(address)",
+    "abi": "event CollateralRegistryAddressChanged(address indexed _collateralRegistryAddress)",
+    "keys": {
+      "collateralRegistryAddress": "_collateralRegistryAddress"
+    }
+  },
+  "DefaultPoolAddressChanged": {
+    "topic": "DefaultPoolAddressChanged(address)",
+    "abi": "event DefaultPoolAddressChanged(address indexed _newDefaultPoolAddress)",
+    "keys": {
+      "newDefaultPoolAddress": "_newDefaultPoolAddress"
+    }
+  },
+  "GasPoolAddressChanged": {
+    "topic": "GasPoolAddressChanged(address)",
+    "abi": "event GasPoolAddressChanged(address indexed _gasPoolAddress)",
+    "keys": {
+      "gasPoolAddress": "_gasPoolAddress"
+    }
+  },
+  "Liquidation": {
+    "topic": "Liquidation(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)",
+    "abi": "event Liquidation(uint256 _debtOffsetBySP, uint256 _debtRedistributed, uint256 _boldGasCompensation, uint256 _collGasCompensation, uint256 _collSentToSP, uint256 _collRedistributed, uint256 _collSurplus, uint256 _L_ETH, uint256 _L_boldDebt, uint256 _price)",
+    "keys": {
+      "debtOffsetBySP": "_debtOffsetBySP",
+      "debtRedistributed": "_debtRedistributed",
+      "boldGasCompensation": "_boldGasCompensation",
+      "collGasCompensation": "_collGasCompensation",
+      "collSentToSP": "_collSentToSP",
+      "collRedistributed": "_collRedistributed",
+      "collSurplus": "_collSurplus",
+      "L_ETH": "_L_ETH",
+      "L_boldDebt": "_L_boldDebt",
+      "price": "_price"
+    }
+  },
+  "PriceFeedAddressChanged": {
+    "topic": "PriceFeedAddressChanged(address)",
+    "abi": "event PriceFeedAddressChanged(address indexed _newPriceFeedAddress)",
+    "keys": {
+      "newPriceFeedAddress": "_newPriceFeedAddress"
+    }
+  },
+  "Redemption": {
+    "topic": "Redemption(uint256,uint256,uint256,uint256,uint256)",
+    "abi": "event Redemption(uint256 _attemptedBoldAmount, uint256 _actualBoldAmount, uint256 _ETHSent, uint256 _ETHFee, uint256 _price)",
+    "keys": {
+      "attemptedBoldAmount": "_attemptedBoldAmount",
+      "actualBoldAmount": "_actualBoldAmount",
+      "ETHSent": "_ETHSent",
+      "ETHFee": "_ETHFee",
+      "price": "_price"
+    }
+  },
+  "RedemptionFeePaidToTrove": {
+    "topic": "RedemptionFeePaidToTrove(uint256,uint256)",
+    "abi": "event RedemptionFeePaidToTrove(uint256 indexed _troveId, uint256 _ETHFee)",
+    "keys": {
+      "troveId": "_troveId",
+      "ETHFee": "_ETHFee"
+    }
+  },
+  "SortedTrovesAddressChanged": {
+    "topic": "SortedTrovesAddressChanged(address)",
+    "abi": "event SortedTrovesAddressChanged(address indexed _sortedTrovesAddress)",
+    "keys": {
+      "sortedTrovesAddress": "_sortedTrovesAddress"
+    }
+  },
+  "StabilityPoolAddressChanged": {
+    "topic": "StabilityPoolAddressChanged(address)",
+    "abi": "event StabilityPoolAddressChanged(address indexed _stabilityPoolAddress)",
+    "keys": {
+      "stabilityPoolAddress": "_stabilityPoolAddress"
+    }
+  },
+  "TroveNFTAddressChanged": {
+    "topic": "TroveNFTAddressChanged(address)",
+    "abi": "event TroveNFTAddressChanged(address indexed _newTroveNFTAddress)",
+    "keys": {
+      "newTroveNFTAddress": "_newTroveNFTAddress"
+    }
+  },
+  "TroveUpdated": {
+    "topic": "TroveUpdated(uint256,uint256,uint256,uint256,uint256,uint256,uint256)",
+    "abi": "event TroveUpdated(uint256 indexed _troveId, uint256 _debt, uint256 _coll, uint256 _stake, uint256 _annualInterestRate, uint256 _snapshotOfTotalCollRedist, uint256 _snapshotOfTotalDebtRedist)",
+    "keys": {
+      "troveId": "_troveId",
+      "debt": "_debt",
+      "coll": "_coll",
+      "stake": "_stake",
+      "annualInterestRate": "_annualInterestRate",
+      "snapshotOfTotalCollRedist": "_snapshotOfTotalCollRedist",
+      "snapshotOfTotalDebtRedist": "_snapshotOfTotalDebtRedist"
+    }
+  }
+}

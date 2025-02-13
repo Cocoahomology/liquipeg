@@ -1,0 +1,51 @@
+# Node
+node_modules
+server/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build
+server/.webpack
+server/.serverless
+dist/
+build/
+*.tsbuildinfo
+
+# Editor
+.nvim
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Environment
+server/.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Cache
+.npm
+.eslintcache
+.stylelintcache
+
+# Development files
+server/src/adapters/adapterchecklist.txt
+server/src/adapters/newchainchecklist.txt
+server/src/utils/runall.ts
+server/src/cli/filljobs.ts
+server/src/cli/getts.ts
+server/src/cli/testadapter.ts
