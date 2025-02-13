@@ -73,13 +73,11 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
           };
         });
         return {
-          getTroveManagerIndex: index, //FIX: check if it's correct
+          getTroveManagerIndex: index,
           troveData: formattedTroveData,
         };
       })
     );
-
-    // console.log(troveDataByManagerList[0].troveData)
 
     return troveDataByManagerList;
   };
@@ -110,8 +108,6 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
         );
       })
     );
-
-    // console.dir(acc, { depth: null });
 
     return acc;
   };
@@ -262,101 +258,6 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
       })
     );
 
-    /*
-
-    const coreColImmutablesPromises = Promise.all(
-      troveManagersList.map(async (troveManager, index) => {
-        let CCR,
-          SCR,
-          MCR,
-          collToken,
-          activePool,
-          defaultPool,
-          stabilityPool,
-          borrowerOperationsAddress,
-          sortedTroves,
-          troveNFT,
-          priceFeed;
-        activePool = activePoolsList[index];
-        defaultPool = defaultPoolsList[index];
-        let addressesRegistry;
-        try {
-          const creationData = await getContractCreationDataEtherscan(api.chain, troveManager);
-          const creationBytecode = creationData.creationBytecode;
-          if (creationBytecode) {
-            addressesRegistry = "0x" + creationBytecode.slice(-40);
-            priceFeed = await api.call({
-              abi: "address:priceFeed",
-              target: addressesRegistry,
-            });
-
-            [
-              borrowerOperationsAddress,
-              CCR,
-              SCR,
-              MCR,
-              collToken,
-              stabilityPool,
-              interestRouter,
-              sortedTroves,
-              troveNFT,
-            ] = await Promise.all([
-              api.call({
-                abi: "address:borrowerOperationsAddress",
-                target: activePool,
-              }),
-              api.call({ abi: "uint256:CCR", target: addressesRegistry }).then((res) => BigInt(res)),
-              api.call({ abi: "uint256:SCR", target: addressesRegistry }).then((res) => BigInt(res)),
-              api.call({ abi: "uint256:MCR", target: addressesRegistry }).then((res) => BigInt(res)),
-              api.call({ abi: "address:collToken", target: addressesRegistry }),
-              api.call({ abi: "address:stabilityPool", target: addressesRegistry }),
-              api.call({ abi: "address:interestRouter", target: addressesRegistry }),
-              api.call({ abi: "address:sortedTroves", target: addressesRegistry }),
-              api.call({ abi: "address:troveNFT", target: addressesRegistry }),
-            ]);
-          } else {
-            throw new Error("No creation bytecode returned for trove manager contract.");
-          }
-        } catch (error) {
-          console.error(`Price feed for trove manager ${troveManager} not found, setting it to empty.`);
-          priceFeed = "";
-          console.error(
-            `Addresses registry for trove manager ${troveManager} failed to fetch, using alternative calls.`
-          );
-          borrowerOperationsAddress = (await api.call({
-            abi: "address:borrowerOperationsAddress",
-            target: activePool,
-          })) as string;
-          [CCR, SCR, MCR, collToken, stabilityPool, interestRouter, sortedTroves, troveNFT] = await Promise.all([
-            api.call({ abi: "uint256:CCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:SCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:MCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
-            api.call({ abi: "address:collToken", target: activePool }),
-            api.call({ abi: "address:stabilityPool", target: activePool }),
-            api.call({ abi: "address:interestRouter", target: activePool }),
-            api.call({ abi: "address:sortedTroves", target: troveManager }),
-            api.call({ abi: "address:troveNFT", target: troveManager }),
-          ]);
-        }
-        coreCollateralImmutablesList[index] = {
-          CCR: BigInt(CCR),
-          SCR: BigInt(SCR),
-          MCR: BigInt(MCR),
-          troveManager: troveManager,
-          collToken: collToken,
-          activePool: activePool,
-          defaultPool: defaultPool,
-          stabilityPool: stabilityPool,
-          borrowerOperationsAddress: borrowerOperationsAddress,
-          sortedTroves: sortedTroves,
-          troveNFT: troveNFT,
-          priceFeed: priceFeed,
-        };
-      })
-    );
-    await coreColImmutablesPromises;
-    */
-
     return {
       boldToken: boldToken,
       collateralRegistry: colRegistryAddress,
@@ -389,57 +290,89 @@ export function getCorePoolDataById(projectId: string) {
       );
     }
 
+    const coreCollateralImmutablesValues = Object.values(immutableData.coreCollateralImmutables);
+
+    const troveManagerList = Object.values(coreCollateralImmutablesValues).map(
+      (collateralImmutables) => collateralImmutables.troveManager
+    );
+    const activePoolList = Object.values(coreCollateralImmutablesValues).map(
+      (collateralImmutables) => collateralImmutables.activePool
+    );
+    const stabilityPoolList = Object.values(coreCollateralImmutablesValues).map(
+      (collateralImmutables) => collateralImmutables.stabilityPool
+    );
+
+    const [
+      getEntireSystemColl,
+      getEntireSystemDebt,
+      getTroveIdsCount,
+      aggWeightedRecordedDebtSum,
+      aggRecordedDebt,
+      calcPendingAggInterest,
+      calcPendingSPYield,
+      lastAggUpdateTime,
+      getCollBalance,
+      getTotalBoldDeposits,
+      getYieldGainsOwed,
+      getYieldGainsPending,
+    ] = await Promise.all([
+      api
+        .multiCall({ abi: "uint256:getEntireSystemColl", calls: troveManagerList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getEntireSystemDebt", calls: troveManagerList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getTroveIdsCount", calls: troveManagerList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:aggRecordedDebt", calls: activePoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:calcPendingSPYield", calls: activePoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:lastAggUpdateTime", calls: activePoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getCollBalance", calls: stabilityPoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getTotalBoldDeposits", calls: stabilityPoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getYieldGainsOwed", calls: stabilityPoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+      api
+        .multiCall({ abi: "uint256:getYieldGainsPending", calls: stabilityPoolList })
+        .then((res) => res.map((item) => BigInt(item))),
+    ]);
+
     let collateralPoolData = [] as ColPoolData[];
 
-    await Promise.all(
-      Object.entries(immutableData.coreCollateralImmutables).map(
-        async ([getTroveManagerIndex, collateralImmutables]) => {
-          const { troveManager, activePool, stabilityPool } = collateralImmutables;
-          const [
-            getEntireSystemColl,
-            getEntireSystemDebt,
-            getTroveIdsCount,
-            aggWeightedRecordedDebtSum,
-            aggRecordedDebt,
-            calcPendingAggInterest,
-            calcPendingSPYield,
-            lastAggUpdateTime,
-            getCollBalance,
-            getTotalBoldDeposits,
-            getYieldGainsOwed,
-            getYieldGainsPending,
-          ] = await Promise.all([
-            api.call({ abi: "uint256:getEntireSystemColl", target: troveManager }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getEntireSystemDebt", target: troveManager }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getTroveIdsCount", target: troveManager }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:aggRecordedDebt", target: activePool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:calcPendingAggInterest", target: activePool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:calcPendingSPYield", target: activePool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:calcPendingAggInterest", target: activePool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:lastAggUpdateTime", target: activePool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getCollBalance", target: stabilityPool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getTotalBoldDeposits", target: stabilityPool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getYieldGainsOwed", target: stabilityPool }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:getYieldGainsPending", target: stabilityPool }).then((res) => BigInt(res)),
-          ]);
-          collateralPoolData.push({
-            getTroveManagerIndex: Number(getTroveManagerIndex),
-            getEntireSystemColl: getEntireSystemColl,
-            getEntireSystemDebt: getEntireSystemDebt,
-            getTroveIdsCount: getTroveIdsCount,
-            aggWeightedRecordedDebtSum: aggWeightedRecordedDebtSum,
-            aggRecordedDebt: aggRecordedDebt,
-            calcPendingAggInterest: calcPendingAggInterest,
-            calcPendingSPYield: calcPendingSPYield,
-            lastAggUpdateTime: lastAggUpdateTime,
-            getCollBalance: getCollBalance,
-            getTotalBoldDeposits: getTotalBoldDeposits,
-            getYieldGainsOwed: getYieldGainsOwed,
-            getYieldGainsPending: getYieldGainsPending,
-          });
-        }
-      )
-    );
+    for (let i = 0; i < troveManagerList.length; i++) {
+      collateralPoolData.push({
+        getTroveManagerIndex: i,
+        getEntireSystemColl: getEntireSystemColl[i],
+        getEntireSystemDebt: getEntireSystemDebt[i],
+        getTroveIdsCount: getTroveIdsCount[i],
+        aggWeightedRecordedDebtSum: aggWeightedRecordedDebtSum[i],
+        aggRecordedDebt: aggRecordedDebt[i],
+        calcPendingAggInterest: calcPendingAggInterest[i],
+        calcPendingSPYield: calcPendingSPYield[i],
+        lastAggUpdateTime: lastAggUpdateTime[i],
+        getCollBalance: getCollBalance[i],
+        getTotalBoldDeposits: getTotalBoldDeposits[i],
+        getYieldGainsOwed: getYieldGainsOwed[i],
+        getYieldGainsPending: getYieldGainsPending[i],
+      });
+    }
 
     const res = {
       baseRate: BigInt(baseRate),
@@ -447,8 +380,6 @@ export function getCorePoolDataById(projectId: string) {
       totalCollaterals: BigInt(totalCollaterals),
       collateralPoolData: collateralPoolData,
     };
-
-    // console.dir(res, { depth: null });
 
     return res;
   };
