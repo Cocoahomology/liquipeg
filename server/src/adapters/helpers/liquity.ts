@@ -59,17 +59,17 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             batchDebtShares,
           } = data;
           return {
-            troveId: BigInt(troveIds[index]),
-            debt: BigInt(debt),
-            coll: BigInt(coll),
-            stake: BigInt(stake),
+            troveId: String(troveIds[index]),
+            debt: String(debt),
+            coll: String(coll),
+            stake: String(stake),
             status: Number(status),
             arrayIndex: Number(arrayIndex),
-            lastDebtUpdateTime: BigInt(lastDebtUpdateTime),
-            lastInterestRateAdjTime: BigInt(lastInterestRateAdjTime),
-            annualInterestRate: BigInt(annualInterestRate),
+            lastDebtUpdateTime: String(lastDebtUpdateTime),
+            lastInterestRateAdjTime: String(lastInterestRateAdjTime),
+            annualInterestRate: String(annualInterestRate),
             interestBatchManager: String(interestBatchManager),
-            batchDebtShares: BigInt(batchDebtShares),
+            batchDebtShares: String(batchDebtShares),
           };
         });
         return {
@@ -177,13 +177,13 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
       api.multiCall({ abi: "address:defaultPoolAddress", calls: activePoolsList }),
       api
         .multiCall({ abi: "uint256:CCR", calls: addressesRegistryList.map((item) => item.address) })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:SCR", calls: addressesRegistryList.map((item) => item.address) })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:MCR", calls: addressesRegistryList.map((item) => item.address) })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api.multiCall({ abi: "address:interestRouter", calls: addressesRegistryList.map((item) => item.address) }),
       api.multiCall({ abi: "address:collToken", calls: addressesRegistryList.map((item) => item.address) }),
       api.multiCall({ abi: "address:stabilityPool", calls: addressesRegistryList.map((item) => item.address) }),
@@ -230,9 +230,9 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
         })) as string;
         const [CCR, SCR, MCR, collToken, defaultPool, stabilityPool, interestRouter, sortedTroves, troveNFT] =
           await Promise.all([
-            api.call({ abi: "uint256:CCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:SCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
-            api.call({ abi: "uint256:MCR", target: borrowerOperationsAddress }).then((res) => BigInt(res)),
+            api.call({ abi: "uint256:CCR", target: borrowerOperationsAddress }).then((res) => String(res)),
+            api.call({ abi: "uint256:SCR", target: borrowerOperationsAddress }).then((res) => String(res)),
+            api.call({ abi: "uint256:MCR", target: borrowerOperationsAddress }).then((res) => String(res)),
             api.call({ abi: "address:collToken", target: activePool }),
             api.call({ abi: "address:defaultPoolAddress", target: activePool }),
             api.call({ abi: "address:stabilityPool", target: activePool }),
@@ -318,40 +318,40 @@ export function getCorePoolDataById(projectId: string) {
     ] = await Promise.all([
       api
         .multiCall({ abi: "uint256:getEntireSystemColl", calls: troveManagerList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getEntireSystemDebt", calls: troveManagerList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getTroveIdsCount", calls: troveManagerList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:aggRecordedDebt", calls: activePoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:calcPendingSPYield", calls: activePoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:lastAggUpdateTime", calls: activePoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getCollBalance", calls: stabilityPoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getTotalBoldDeposits", calls: stabilityPoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getYieldGainsOwed", calls: stabilityPoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
       api
         .multiCall({ abi: "uint256:getYieldGainsPending", calls: stabilityPoolList })
-        .then((res) => res.map((item) => BigInt(item))),
+        .then((res) => res.map((item) => String(item))),
     ]);
 
     let collateralPoolData = [] as ColPoolData[];
@@ -375,9 +375,9 @@ export function getCorePoolDataById(projectId: string) {
     }
 
     const res = {
-      baseRate: BigInt(baseRate),
-      getRedemptionRate: BigInt(getRedemptionRate),
-      totalCollaterals: BigInt(totalCollaterals),
+      baseRate: String(baseRate),
+      getRedemptionRate: String(getRedemptionRate),
+      totalCollaterals: String(totalCollaterals),
       collateralPoolData: collateralPoolData,
     };
 

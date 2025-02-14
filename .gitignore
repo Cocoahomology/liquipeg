@@ -44,6 +44,10 @@ coverage/
 
 # Development files
 server/src/adapters/adapterchecklist.txt
-server/src/adapters/portal/junk.ts
 server/src/adapters/newchainchecklist.txt
 server/src/utils/runall.ts
+server/src/cli/testra.ts
+server/src/cli/filljobs.ts
+server/src/cli/getts.ts
+server/src/cli/test.ts
+server/src/cli/viewdb.ts

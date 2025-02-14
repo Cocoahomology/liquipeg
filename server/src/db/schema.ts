@@ -1,11 +1,11 @@
-import { pgTable as table } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { pgTable as table, PgTableWithColumns } from "drizzle-orm/pg-core";
+import { sql, TableConfig } from "drizzle-orm";
 import * as d from "drizzle-orm/pg-core";
 
 export const protocols = table(
   "protocols",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
     protocolId: d.integer().notNull(),
     chain: d.varchar({ length: 32 }).notNull(),
   },
@@ -15,45 +15,47 @@ export const protocols = table(
 export const troveManagers = table(
   "trove_managers",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    protocolId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    protocolPk: d
       .integer()
-      .references(() => protocols.id, { onDelete: "cascade" })
+      .references(() => protocols.pk, { onDelete: "cascade" })
       .notNull(),
     troveManagerIndex: d.integer().notNull(),
   },
   (troveManagers) => [
     d
       .unique("trove_managers_protocol_trove_manager_unique")
-      .on(troveManagers.protocolId, troveManagers.troveManagerIndex),
+      .on(troveManagers.protocolPk, troveManagers.troveManagerIndex),
   ]
 );
 
 export const troveData = table(
   "trove_data",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    troveId: d.bigint({ mode: "bigint" }).notNull(),
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveId: d.varchar({ length: 96 }).notNull(),
     blockNumber: d.integer().notNull(),
-    troveManagerId: d
+    troveManagerPk: d
       .integer()
-      .references(() => troveManagers.id, { onDelete: "cascade" })
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
       .notNull(),
-    debt: d.bigint({ mode: "bigint" }).notNull(),
-    collateral: d.bigint({ mode: "bigint" }).notNull(),
-    stake: d.bigint({ mode: "bigint" }).notNull(),
+    debt: d.varchar({ length: 96 }).notNull(),
+    coll: d.varchar({ length: 96 }).notNull(),
+    stake: d.varchar({ length: 96 }).notNull(),
     /* Status: 0=nonExistent, 1=active, 2=closedByOwner, 3=closedByLiquidation, 4=zombie */
     status: d.integer().notNull(),
     arrayIndex: d.integer().notNull(),
-    lastDebtUpdateTime: d.bigint({ mode: "bigint" }).notNull(),
-    lastInterestRateAdjTime: d.bigint({ mode: "bigint" }).notNull(),
-    annualInterestRate: d.bigint({ mode: "bigint" }).notNull(),
+    lastDebtUpdateTime: d.varchar({ length: 96 }).notNull(),
+    lastInterestRateAdjTime: d.varchar({ length: 96 }).notNull(),
+    annualInterestRate: d.varchar({ length: 96 }).notNull(),
     interestBatchManager: d.varchar({ length: 42 }).notNull(),
-    batchDebtShares: d.bigint({ mode: "bigint" }).notNull(),
+    batchDebtShares: d.varchar({ length: 96 }).notNull(),
   },
   (troveData) => [
-    d.index("trove_data_trove_manager_block_idx").on(troveData.troveManagerId, troveData.blockNumber),
-    d.uniqueIndex("trove_data_trove_id_block_unique_idx").on(troveData.troveId, troveData.blockNumber),
+    d.index("trove_data_trove_manager_block_idx").on(troveData.troveManagerPk, troveData.blockNumber),
+    d
+      .uniqueIndex("trove_data_trove_manager_trove_id_block_unique_idx")
+      .on(troveData.troveManagerPk, troveData.troveId, troveData.blockNumber),
     d.check("trove_data_status_check", sql`${troveData.status} >=0 AND ${troveData.status} < 5`),
   ]
 );
@@ -61,10 +63,10 @@ export const troveData = table(
 export const eventData = table(
   "event_data",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    troveManagerId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveManagerPk: d
       .integer()
-      .references(() => troveManagers.id, { onDelete: "cascade" })
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
       .notNull(),
     blockNumber: d.integer().notNull(),
     txHash: d.varchar({ length: 66 }).notNull(),
@@ -81,10 +83,10 @@ export const eventData = table(
 export const coreImmutables = table(
   "core_immutables",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    protocolId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    protocolPk: d
       .integer()
-      .references(() => protocols.id, { onDelete: "cascade" })
+      .references(() => protocols.pk, { onDelete: "cascade" })
       .notNull(),
     blockNumber: d.integer().notNull(),
     boldToken: d.varchar({ length: 42 }).notNull(),
@@ -94,22 +96,22 @@ export const coreImmutables = table(
   (coreImmutables) => [
     d
       .uniqueIndex("core_immutables_block_number_protocol_id_unique_idx")
-      .on(coreImmutables.blockNumber, coreImmutables.protocolId),
+      .on(coreImmutables.blockNumber, coreImmutables.protocolPk),
   ]
 );
 
 export const coreColImmutables = table(
   "core_col_immutables",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    troveManagerId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveManagerPk: d
       .integer()
-      .references(() => troveManagers.id, { onDelete: "cascade" })
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
       .notNull(),
     blockNumber: d.integer().notNull(),
-    CCR: d.bigint({ mode: "bigint" }).notNull(),
-    SCR: d.bigint({ mode: "bigint" }).notNull(),
-    MCR: d.bigint({ mode: "bigint" }).notNull(),
+    CCR: d.varchar({ length: 96 }).notNull(),
+    SCR: d.varchar({ length: 96 }).notNull(),
+    MCR: d.varchar({ length: 96 }).notNull(),
     troveManager: d.varchar({ length: 42 }).notNull(),
     collToken: d.varchar({ length: 42 }).notNull(),
     activePool: d.varchar({ length: 42 }).notNull(),
@@ -123,69 +125,90 @@ export const coreColImmutables = table(
   (coreColImmutables) => [
     d
       .uniqueIndex("core_col_immutables_block_number_trove_manager_id_unique_idx")
-      .on(coreColImmutables.blockNumber, coreColImmutables.troveManagerId),
+      .on(coreColImmutables.blockNumber, coreColImmutables.troveManagerPk),
   ]
 );
 
 export const corePoolData = table(
   "core_pool_data",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    protocolId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    protocolPk: d
       .integer()
-      .references(() => protocols.id, { onDelete: "cascade" })
+      .references(() => protocols.pk, { onDelete: "cascade" })
       .notNull(),
     blockNumber: d.integer().notNull(),
-    baseRate: d.bigint({ mode: "bigint" }).notNull(),
-    getRedemptionRate: d.bigint({ mode: "bigint" }).notNull(),
-    totalCollaterals: d.bigint({ mode: "bigint" }).notNull(),
+    baseRate: d.varchar({ length: 96 }).notNull(),
+    getRedemptionRate: d.varchar({ length: 96 }).notNull(),
+    totalCollaterals: d.varchar({ length: 96 }).notNull(),
   },
   (corePoolData) => [
     d
       .uniqueIndex("core_pool_data_block_number_protocol_id_unique_idx")
-      .on(corePoolData.blockNumber, corePoolData.protocolId),
+      .on(corePoolData.blockNumber, corePoolData.protocolPk),
   ]
 );
 
 export const colPoolData = table(
   "col_pool_data",
   {
-    id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    troveManagerId: d
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveManagerPk: d
       .integer()
-      .references(() => troveManagers.id, { onDelete: "cascade" })
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
       .notNull(),
     blockNumber: d.integer().notNull(),
-    getEntireSystemColl: d.bigint({ mode: "bigint" }).notNull(),
-    getEntireSystemDebt: d.bigint({ mode: "bigint" }).notNull(),
-    getTroveIdsCount: d.bigint({ mode: "bigint" }).notNull(),
-    aggWeightedRecordedDebtSum: d.bigint({ mode: "bigint" }).notNull(),
-    aggRecordedDebt: d.bigint({ mode: "bigint" }).notNull(),
-    calcPendingAggInterest: d.bigint({ mode: "bigint" }).notNull(),
-    calcPendingSPYield: d.bigint({ mode: "bigint" }).notNull(),
-    lastAggUpdateTime: d.bigint({ mode: "bigint" }).notNull(),
-    getCollBalance: d.bigint({ mode: "bigint" }).notNull(),
-    getTotalBoldDeposits: d.bigint({ mode: "bigint" }).notNull(),
-    getYieldGainsOwed: d.bigint({ mode: "bigint" }).notNull(),
-    getYieldGainsPending: d.bigint({ mode: "bigint" }).notNull(),
+    getEntireSystemColl: d.varchar({ length: 96 }).notNull(),
+    getEntireSystemDebt: d.varchar({ length: 96 }).notNull(),
+    getTroveIdsCount: d.varchar({ length: 96 }).notNull(),
+    aggWeightedRecordedDebtSum: d.varchar({ length: 96 }).notNull(),
+    aggRecordedDebt: d.varchar({ length: 96 }).notNull(),
+    calcPendingAggInterest: d.varchar({ length: 96 }).notNull(),
+    calcPendingSPYield: d.varchar({ length: 96 }).notNull(),
+    lastAggUpdateTime: d.varchar({ length: 96 }).notNull(),
+    getCollBalance: d.varchar({ length: 96 }).notNull(),
+    getTotalBoldDeposits: d.varchar({ length: 96 }).notNull(),
+    getYieldGainsOwed: d.varchar({ length: 96 }).notNull(),
+    getYieldGainsPending: d.varchar({ length: 96 }).notNull(),
   },
   (colPoolData) => [
     d
       .uniqueIndex("col_pool_data_block_number_trove_manager_id_unique_idx")
-      .on(colPoolData.blockNumber, colPoolData.troveManagerId),
+      .on(colPoolData.blockNumber, colPoolData.troveManagerPk),
   ]
 );
 
 export const errorLogs = table("error_logs", {
-  id: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+  pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
   name: d.text(),
   level: d.integer().notNull(),
   hostName: d.text(),
   // Keyword: 'timeout', 'missingValues', 'critical', 'missingBlocks'
-  keyword: d.varchar({ length: 32 }),
+  keyword: d.varchar({ length: 16 }),
   table: d.varchar({ length: 64 }),
   chain: d.varchar({ length: 32 }),
+  protocolId: d.integer(),
   msg: d.text(),
   pid: d.integer(),
   time: d.timestamp({ withTimezone: true }).defaultNow(),
 });
+
+const tables = {
+  protocols: protocols,
+  troveManagers: troveManagers,
+  troveData: troveData,
+  eventData: eventData,
+  coreImmutables: coreImmutables,
+  coreColImmutables: coreColImmutables,
+  corePoolData: corePoolData,
+  colPoolData: colPoolData,
+  errorLogs: errorLogs,
+};
+
+export function getTable(tableName: string): PgTableWithColumns<any> {
+  const table = tables[tableName as keyof typeof tables];
+  if (!table) {
+    throw new Error(`Table ${tableName} does not exist`);
+  }
+  return table;
+}
