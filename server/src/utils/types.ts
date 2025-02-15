@@ -14,17 +14,17 @@ export type TroveDataByManager = {
 };
 
 type TroveData = {
-  troveId: BigInt | string;
-  debt: BigInt | string;
-  coll: BigInt | string;
-  stake: BigInt | string;
+  troveId: string;
+  debt: string;
+  coll: string;
+  stake: string;
   status: number;
   arrayIndex: number;
-  lastDebtUpdateTime: BigInt | string;
-  lastInterestRateAdjTime: BigInt | string;
-  annualInterestRate: BigInt | string;
+  lastDebtUpdateTime: string;
+  lastInterestRateAdjTime: string;
+  annualInterestRate: string;
   interestBatchManager: string;
-  batchDebtShares: BigInt | string;
+  batchDebtShares: string;
 };
 
 export type EventDataEntry = {
@@ -62,9 +62,9 @@ export type CoreImmutables = {
 
 export type CoreColImmutables = {
   [getTroveManagerIndex: number]: {
-    CCR: BigInt | string;
-    SCR: BigInt | string;
-    MCR: BigInt | string;
+    CCR: string;
+    SCR: string;
+    MCR: string;
     troveManager: string;
     collToken: string;
     activePool: string;
@@ -81,38 +81,34 @@ export type CorePoolDataEntry = {
   protocolId?: number;
   blockNumber?: number;
   chain: string;
-  baseRate: BigInt | string;
-  getRedemptionRate: BigInt | string;
-  totalCollaterals: BigInt | string;
-  collateralPoolData: {
-    [getTroveManagerIndex: number]: ColPoolData;
-  };
+  baseRate: string;
+  getRedemptionRate: string;
+  totalCollaterals: string;
+  collateralPoolData: ColPoolData[];
 };
 
 export type CorePoolData = {
-  baseRate: BigInt | string;
-  getRedemptionRate: BigInt | string;
-  totalCollaterals: BigInt | string;
-  collateralPoolData: {
-    [getTroveManagerIndex: number]: ColPoolData;
-  };
+  baseRate: string;
+  getRedemptionRate: string;
+  totalCollaterals: string;
+  collateralPoolData: ColPoolData[];
 };
 
 export type ColPoolData = {
   getTroveManagerIndex: number;
-  getEntireSystemColl: BigInt | string;
-  getEntireSystemDebt: BigInt | string;
-  getTroveIdsCount: BigInt | string;
-  aggWeightedRecordedDebtSum: BigInt | string;
-  aggRecordedDebt: BigInt | string;
-  calcPendingAggInterest: BigInt | string;
-  calcPendingSPYield: BigInt | string;
-  lastAggUpdateTime: BigInt | string;
+  getEntireSystemColl: string;
+  getEntireSystemDebt: string;
+  getTroveIdsCount: string;
+  aggWeightedRecordedDebtSum: string;
+  aggRecordedDebt: string;
+  calcPendingAggInterest: string;
+  calcPendingSPYield: string;
+  lastAggUpdateTime: string;
   // stability pool:
-  getCollBalance: BigInt | string;
-  getTotalBoldDeposits: BigInt | string;
-  getYieldGainsOwed: BigInt | string;
-  getYieldGainsPending: BigInt | string;
+  getCollBalance: string;
+  getTotalBoldDeposits: string;
+  getYieldGainsOwed: string;
+  getYieldGainsPending: string;
 };
 
 export type RecordedBlocks = {
