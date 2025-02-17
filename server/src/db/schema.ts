@@ -182,15 +182,11 @@ export const errorLogs = table("error_logs", {
   pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
   name: d.text(),
   level: d.integer().notNull(),
-  hostName: d.text(),
-  // Keyword: 'timeout', 'missingValues', 'critical', 'missingBlocks'
-  keyword: d.varchar({ length: 16 }),
-  table: d.varchar({ length: 64 }),
-  chain: d.varchar({ length: 32 }),
-  protocolId: d.integer(),
+  hostname: d.text(),
   msg: d.text(),
   pid: d.integer(),
   time: d.timestamp({ withTimezone: true }).defaultNow(),
+  content: d.jsonb(),
 });
 
 const tables = {
@@ -205,7 +201,17 @@ const tables = {
   errorLogs: errorLogs,
 };
 
-export function getTable(tableName: string): PgTableWithColumns<any> {
+export type TableName =
+  | "protocols"
+  | "troveManagers"
+  | "troveData"
+  | "coreImmutables"
+  | "coreColImmutables"
+  | "corePoolData"
+  | "colPoolData"
+  | "errorLogs";
+
+export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];
   if (!table) {
     throw new Error(`Table ${tableName} does not exist`);

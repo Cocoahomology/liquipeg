@@ -28,7 +28,7 @@ const createErrorLogger = () => {
           rejectUnauthorized: false,
         },
       },
-      tableName: "logs",
+      tableName: "error_logs",
     });
   }
   logger = bunyan.createLogger({
