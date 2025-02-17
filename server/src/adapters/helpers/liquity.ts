@@ -133,7 +133,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
 
     let accInterestRouterList = [] as string[];
     let missingAddressesRegistryIndexes = [] as number[];
-    let coreCollateralImmutablesList = [] as CoreColImmutables;
+    let coreCollateralImmutablesList = [] as CoreColImmutables[];
 
     const addressesRegistryList = (
       await Promise.all(
@@ -199,7 +199,8 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
     accInterestRouterList = [...interestRouterList];
 
     addressesRegistryList.forEach((item, idx) => {
-      coreCollateralImmutablesList[item.index] = {
+      coreCollateralImmutablesList.push({
+        getTroveManagerIndex: item.index,
         CCR: CCRList[idx],
         SCR: SCRList[idx],
         MCR: MCRList[idx],
@@ -212,7 +213,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
         sortedTroves: sortedTrovesList[idx],
         troveNFT: troveNFTList[idx],
         priceFeed: priceFeedList[idx],
-      };
+      });
     });
 
     await Promise.all(
@@ -241,7 +242,8 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
             api.call({ abi: "address:troveNFT", target: troveManager }),
           ]);
         accInterestRouterList.push(interestRouter);
-        coreCollateralImmutablesList[index] = {
+        coreCollateralImmutablesList.push({
+          getTroveManagerIndex: index,
           CCR: CCR,
           SCR: SCR,
           MCR: MCR,
@@ -254,7 +256,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
           sortedTroves: sortedTroves,
           troveNFT: troveNFT,
           priceFeed: priceFeed,
-        };
+        });
       })
     );
 
@@ -270,8 +272,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
 export function getCorePoolDataById(projectId: string) {
   return async (api: ChainApi) => {
     // FIX: Fetch this from db
-    const fetchedProtocolImmutables = protocolImmutables as CoreImmutablesEntry;
-    const immutableData = fetchedProtocolImmutables.immutableData as CoreImmutables;
+    const immutableData = protocolImmutables as CoreImmutables;
     if (!immutableData) {
       throw new Error(`No immutable data found for project with Id ${projectId}.`);
     }
@@ -290,15 +291,15 @@ export function getCorePoolDataById(projectId: string) {
       );
     }
 
-    const coreCollateralImmutablesValues = Object.values(immutableData.coreCollateralImmutables);
+    const coreCollateralImmutablesValues = immutableData.coreCollateralImmutables;
 
-    const troveManagerList = Object.values(coreCollateralImmutablesValues).map(
+    const troveManagerList = coreCollateralImmutablesValues.map(
       (collateralImmutables) => collateralImmutables.troveManager
     );
-    const activePoolList = Object.values(coreCollateralImmutablesValues).map(
+    const activePoolList = coreCollateralImmutablesValues.map(
       (collateralImmutables) => collateralImmutables.activePool
     );
-    const stabilityPoolList = Object.values(coreCollateralImmutablesValues).map(
+    const stabilityPoolList = coreCollateralImmutablesValues.map(
       (collateralImmutables) => collateralImmutables.stabilityPool
     );
 

@@ -35,7 +35,7 @@ export type EventDataEntry = {
   logIndex: number;
   chain: string;
   eventName: string;
-  eventData: any; // FIX
+  eventData: EventData[];
 };
 
 export type EventData = {
@@ -50,31 +50,33 @@ export type CoreImmutablesEntry = {
   protocolId: number;
   blockNumber: number;
   chain: string;
-  immutableData: CoreImmutables;
+  boldToken: string;
+  collateralRegistry: string;
+  interestRouter: string;
+  coreCollateralImmutables: CoreColImmutables[];
 };
 
 export type CoreImmutables = {
   boldToken: string;
   collateralRegistry: string;
   interestRouter: string;
-  coreCollateralImmutables: CoreColImmutables;
+  coreCollateralImmutables: CoreColImmutables[];
 };
 
 export type CoreColImmutables = {
-  [getTroveManagerIndex: number]: {
-    CCR: string;
-    SCR: string;
-    MCR: string;
-    troveManager: string;
-    collToken: string;
-    activePool: string;
-    defaultPool: string;
-    stabilityPool: string;
-    borrowerOperationsAddress: string;
-    sortedTroves: string;
-    troveNFT: string;
-    priceFeed: string;
-  };
+  getTroveManagerIndex: number;
+  CCR: string;
+  SCR: string;
+  MCR: string;
+  troveManager: string;
+  collToken: string;
+  activePool: string;
+  defaultPool: string;
+  stabilityPool: string;
+  borrowerOperationsAddress: string;
+  sortedTroves: string;
+  troveNFT: string;
+  priceFeed: string;
 };
 
 export type CorePoolDataEntry = {
