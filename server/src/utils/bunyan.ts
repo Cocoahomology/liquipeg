@@ -15,45 +15,10 @@ type PostgresStream = Stream & {
 let stream: PostgresStream | null = null;
 let logger: Logger | null = null;
 
-const createErrorLogger = () => {
-  if (!stream) {
-    stream = bunyanPostgresStream({
-      connection: {
-        host: "liquipeg-pgdb-instance-1.cjiuck2sueaz.ap-east-1.rds.amazonaws.com",
-        user: "pgmaster",
-        password: process.env.PSQL_PW,
-        database: "liquipeg_pgdb",
-        port: 5432,
-        ssl: {
-          rejectUnauthorized: false,
-        },
-      },
-      tableName: "error_logs",
-    });
-  }
-  logger = bunyan.createLogger({
-    name: "pg stream",
-    level: "error",
-    stream,
-  }) as Logger;
-  return logger;
-};
-
-const closeLogStream = async () => {
-  if (stream?.end) {
-    await new Promise<void>((resolve) => {
-      stream?.end(() => {
-        stream = null;
-        logger = null;
-        resolve();
-      });
-    });
-  }
-};
-
 export class ErrorLoggerService {
   private static instance: ErrorLoggerService;
   private logger: Logger | null = null;
+  private stream: PostgresStream | null = null;
 
   private constructor() {}
 
@@ -65,15 +30,38 @@ export class ErrorLoggerService {
   }
 
   public initLogger() {
+    if (!this.stream) {
+      this.stream = bunyanPostgresStream({
+        connection: {
+          host: "liquipeg-pgdb-instance-1.cjiuck2sueaz.ap-east-1.rds.amazonaws.com",
+          user: "pgmaster",
+          password: process.env.PSQL_PW,
+          database: "liquipeg_pgdb",
+          port: 5432,
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        },
+        tableName: "error_logs",
+      });
+    }
+
     if (!this.logger) {
-      this.logger = createErrorLogger();
+      this.logger = bunyan.createLogger({
+        name: "pg stream",
+        level: "error",
+        streams: [
+          {
+            stream: this.stream,
+          },
+          {
+            stream: process.stdout,
+            level: "error",
+          },
+        ],
+      }) as Logger;
     }
     return this.logger;
-  }
-
-  public async closeLogger() {
-    await closeLogStream();
-    this.logger = null;
   }
 
   public error(params: {
@@ -82,10 +70,31 @@ export class ErrorLoggerService {
     table?: string;
     chain?: string;
     protocolId?: number;
-  }) {
+  }): Promise<void> {
     if (!this.logger) {
-      this.logger = this.initLogger();
+      this.initLogger();
     }
-    this.logger.error(params);
+
+    return new Promise((resolve, reject) => {
+      this.logger!.error(params, (err: Error | undefined) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  public async closeLogger() {
+    if (this.stream?.end) {
+      await new Promise<void>((resolve) => {
+        this.stream?.end(() => {
+          this.stream = null;
+          this.logger = null;
+          resolve();
+        });
+      });
+    }
   }
 }
