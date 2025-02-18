@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import dotenv from "dotenv";
 import path from "path";
+import * as schema from "./schema";
 
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -17,6 +18,7 @@ const db = drizzle({
       rejectUnauthorized: false,
     },
   },
+  schema: schema,
 });
 
 export default db;

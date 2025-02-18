@@ -1,5 +1,5 @@
 import { pgTable as table, PgTableWithColumns } from "drizzle-orm/pg-core";
-import { sql, TableConfig } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import * as d from "drizzle-orm/pg-core";
 
 export const protocols = table(
@@ -52,7 +52,9 @@ export const troveData = table(
     batchDebtShares: d.varchar({ length: 96 }).notNull(),
   },
   (troveData) => [
-    d.index("trove_data_trove_manager_block_idx").on(troveData.troveManagerPk, troveData.blockNumber),
+    d
+      .index("trove_data_trove_manager_trove_id_block_idx")
+      .on(troveData.troveManagerPk, troveData.troveId, troveData.blockNumber),
     d
       .uniqueIndex("trove_data_trove_manager_trove_id_block_unique_idx")
       .on(troveData.troveManagerPk, troveData.troveId, troveData.blockNumber),
@@ -188,6 +190,80 @@ export const errorLogs = table("error_logs", {
   time: d.timestamp({ withTimezone: true }).defaultNow(),
   content: d.jsonb(),
 });
+
+export const protocolsRelations = relations(protocols, ({ one }) => ({
+  troveManagers: one(troveManagers, {
+    fields: [protocols.pk],
+    references: [troveManagers.protocolPk],
+  }),
+  coreImmutables: one(coreImmutables, {
+    fields: [protocols.pk],
+    references: [coreImmutables.protocolPk],
+  }),
+  corePoolData: one(corePoolData, {
+    fields: [protocols.pk],
+    references: [corePoolData.protocolPk],
+  }),
+}));
+
+export const troveManagerRelations = relations(troveManagers, ({ one, many }) => ({
+  protocol: one(protocols, {
+    fields: [troveManagers.protocolPk],
+    references: [protocols.pk],
+  }),
+  troveData: many(troveData),
+  eventData: many(eventData),
+  coreColImmutables: one(coreColImmutables, {
+    fields: [troveManagers.pk],
+    references: [coreColImmutables.troveManagerPk],
+  }),
+  colPoolData: one(colPoolData, {
+    fields: [troveManagers.pk],
+    references: [colPoolData.troveManagerPk],
+  }),
+}));
+
+export const troveDataRelations = relations(troveData, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [troveData.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
+export const eventDataRelations = relations(eventData, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [eventData.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
+export const coreImmutablesRelations = relations(coreImmutables, ({ one }) => ({
+  protocol: one(protocols, {
+    fields: [coreImmutables.protocolPk],
+    references: [protocols.pk],
+  }),
+}));
+
+export const coreColImmutablesRelations = relations(coreColImmutables, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [coreColImmutables.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
+export const corePoolDataRelations = relations(corePoolData, ({ one }) => ({
+  protocol: one(protocols, {
+    fields: [corePoolData.protocolPk],
+    references: [protocols.pk],
+  }),
+}));
+
+export const colPoolDataRelations = relations(colPoolData, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [colPoolData.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
 
 const tables = {
   protocols: protocols,
