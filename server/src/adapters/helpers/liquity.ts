@@ -3,7 +3,7 @@ import { EventData, CoreImmutables, CoreColImmutables, CoreImmutablesEntry, ColP
 import { getEvmEventLogs } from "../../utils/processTransactions";
 import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManagerAbi.json";
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
-import * as protocolImmutables from "../testProtocolImmutables.json";
+import { getLatestCoreImmutables } from "../../db/read";
 
 const abi = {
   Troves:
@@ -271,11 +271,11 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
 
 export function getCorePoolDataById(projectId: string) {
   return async (api: ChainApi) => {
-    // FIX: Fetch this from db
-    const immutableData = protocolImmutables as CoreImmutables;
+    const immutableData = await getLatestCoreImmutables(Number(projectId), api.chain);
     if (!immutableData) {
       throw new Error(`No immutable data found for project with Id ${projectId}.`);
     }
+
     const { collateralRegistry } = immutableData;
     const [baseRate, getRedemptionRate, totalCollaterals] = await Promise.all([
       api.call({ abi: "uint256:baseRate", target: collateralRegistry }),
