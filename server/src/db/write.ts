@@ -6,6 +6,9 @@ import { TroveDataEntry, CorePoolDataEntry, CoreImmutablesEntry } from "../utils
 import { eq, and } from "drizzle-orm";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 const retry = require("async-retry");
+import protocolData from "../data/protocolData";
+
+// FIX: types throughout this file
 
 export async function insertEntriesFromAdapter(adapterFn: keyof Adapter, data: object[], options: InsertOptions = {}) {
   const mergedOptions = { ...DEFAULT_INSERT_OPTIONS, ...options };
@@ -94,13 +97,19 @@ async function insertEntries(
   }
 
   const protocolsTable = getTable("protocols");
-
-  // First, get or create all required protocols outside the transaction
   const protocolMap = new Map<string, number>();
 
   for (const entry of data) {
     const { protocolId, chain } = entry;
     const key = `${protocolId}-${chain}`;
+
+    const protocolDbName = protocolData.find((protocol) => protocol.id === protocolId)?.protocolDbName;
+
+    if (!protocolDbName) {
+      throw new Error(
+        `protocolData does not contain name for protocol with ID ${protocolId}, ensure it has been added.`
+      );
+    }
 
     if (!protocolMap.has(key)) {
       const protocol = await db
@@ -116,6 +125,7 @@ async function insertEntries(
           .values({
             protocolId: protocolId,
             chain: chain,
+            name: protocolDbName,
           })
           .returning({ pk: protocolsTable.pk });
         protocolMap.set(key, result.pk);
@@ -160,7 +170,6 @@ async function insertTroveData(
   onConflict: "error" | "ignore"
 ) {
   const troveDataTable = getTable("troveData");
-  console.log("fuck4");
 
   const { getTroveManagerIndex, troveData } = troveDataEntry;
 

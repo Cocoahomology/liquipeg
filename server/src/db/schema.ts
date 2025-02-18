@@ -8,6 +8,7 @@ export const protocols = table(
     pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
     protocolId: d.integer().notNull(),
     chain: d.varchar({ length: 32 }).notNull(),
+    name: d.varchar({ length: 32 }),
   },
   (protocols) => [d.unique("protocols_protocol_id_chain_unique").on(protocols.protocolId, protocols.chain)]
 );
