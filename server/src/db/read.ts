@@ -1,9 +1,7 @@
-import { eq, desc, and, sql, InferSelectModel } from "drizzle-orm";
-import { CoreImmutables } from "../utils/types";
-import { protocols, coreImmutables, coreColImmutables, troveManagers, troveData } from "./schema";
+import { eq, desc, and, sql } from "drizzle-orm";
+import { CoreImmutables, TroveDataEntry, CorePoolDataEntry } from "../utils/types";
+import { protocols, coreImmutables, coreColImmutables, troveManagers, corePoolData, colPoolData } from "./schema";
 import db from "./db";
-
-type TroveDataRow = InferSelectModel<typeof troveData> & { rn: number };
 
 async function getProtocol(protocolId: number, chain: string) {
   return await db.query.protocols.findFirst({
@@ -76,6 +74,7 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
   const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
   if (!troveMgrs.length) return null;
 
+  // window function for performance
   const troveDataByManager = await Promise.all(
     troveMgrs.map(async (tm) => {
       const entries = (
@@ -92,26 +91,91 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
         )
         SELECT * FROM LatestTroves WHERE rn = 1
       `)
-      ).rows as unknown as TroveDataRow[];
-      console.log(entries);
+      ).rows as unknown as any[];
       if (!entries.length) return null;
 
       // Get the highest block number
-      const maxBlock = Math.max(...entries.map((e) => e.blockNumber));
+      const maxBlock = Math.max(...entries.map((e) => e.block_number));
 
-      // Transform entries directly, removing internal fields
+      // Transform entries by removing internal fields, fix snake case from raw sql result
       const troveDataEntries = entries.map(
-        ({ blockNumber, pk, troveManagerPk, rn, ...troveDataWithoutInternals }) => troveDataWithoutInternals
+        ({
+          block_number,
+          pk,
+          trove_manager_pk,
+          rn,
+          trove_id: troveId,
+          array_index: arrayIndex,
+          last_debt_update_time: lastDebtUpdateTime,
+          last_interest_rate_adj_time: lastInterestRateAdjTime,
+          annual_interest_rate: annualInterestRate,
+          interest_batch_manager: interestBatchManager,
+          batch_debt_shares: batchDebtShares,
+          ...rest
+        }) => ({
+          troveId,
+          arrayIndex,
+          lastDebtUpdateTime,
+          lastInterestRateAdjTime,
+          annualInterestRate,
+          interestBatchManager,
+          batchDebtShares,
+          ...rest,
+        })
       );
 
       return {
+        protocolId: protocol.protocolId,
         getTroveManagerIndex: tm.troveManagerIndex,
         blockNumber: maxBlock,
         chain,
         troveData: troveDataEntries,
-      };
+      } as TroveDataEntry;
     })
   );
 
   return troveDataByManager.filter((td): td is NonNullable<typeof td> => td !== null);
+}
+
+export async function getLatestPoolDataEntries(protocolId: number, chain: string): Promise<CorePoolDataEntry | null> {
+  const protocol = await getProtocol(protocolId, chain);
+  if (!protocol) return null;
+
+  const latestCorePool = await db.query.corePoolData.findFirst({
+    where: eq(corePoolData.protocolPk, protocol.pk),
+    orderBy: [desc(corePoolData.blockNumber)],
+  });
+
+  if (!latestCorePool) return null;
+
+  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+  if (!troveMgrs.length) return null;
+
+  const latestColPool = await Promise.all(
+    troveMgrs.map(async (tm) => {
+      const colPool = await db.query.colPoolData.findFirst({
+        where: eq(colPoolData.troveManagerPk, tm.pk),
+        orderBy: [desc(colPoolData.blockNumber)],
+      });
+
+      if (!colPool) return null;
+
+      const { pk, troveManagerPk, blockNumber, ...formattedColPool } = colPool;
+
+      return {
+        getTroveManagerIndex: tm.troveManagerIndex,
+        ...formattedColPool,
+      };
+    })
+  );
+
+  return {
+    protocolId,
+    chain,
+    blockNumber: latestCorePool.blockNumber,
+    baseRate: latestCorePool.baseRate,
+    getRedemptionRate: latestCorePool.getRedemptionRate,
+    totalCollaterals: latestCorePool.totalCollaterals,
+    collateralPoolData: latestColPool.filter((cp): cp is NonNullable<typeof cp> => cp !== null),
+  };
 }
