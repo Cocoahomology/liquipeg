@@ -75,7 +75,7 @@ export const eventData = table(
     txHash: d.varchar({ length: 66 }).notNull(),
     logIndex: d.integer().notNull(),
     eventName: d.varchar({ length: 128 }).notNull(),
-    eventData: d.json().notNull(),
+    eventData: d.jsonb().notNull(), // Fix: eventually normalize
   },
   (eventData) => [
     d.index("event_data_block_number_event_name_idx").on(eventData.blockNumber, eventData.eventName),
@@ -192,6 +192,20 @@ export const errorLogs = table("error_logs", {
   content: d.jsonb(),
 });
 
+export const recordedBlocks = table(
+  "recorded_blocks",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    protocolPk: d
+      .integer()
+      .references(() => protocols.pk, { onDelete: "cascade" })
+      .notNull(),
+    startBlock: d.integer().notNull(),
+    endBlock: d.integer().notNull(),
+  },
+  (recordedBlocks) => [d.unique("recorded_blocks_protocol_pk_unique").on(recordedBlocks.protocolPk)]
+);
+
 export const protocolsRelations = relations(protocols, ({ one }) => ({
   troveManagers: one(troveManagers, {
     fields: [protocols.pk],
@@ -204,6 +218,10 @@ export const protocolsRelations = relations(protocols, ({ one }) => ({
   corePoolData: one(corePoolData, {
     fields: [protocols.pk],
     references: [corePoolData.protocolPk],
+  }),
+  recordedBlocks: one(recordedBlocks, {
+    fields: [protocols.pk],
+    references: [recordedBlocks.protocolPk],
   }),
 }));
 
@@ -276,17 +294,20 @@ const tables = {
   corePoolData: corePoolData,
   colPoolData: colPoolData,
   errorLogs: errorLogs,
+  recordedBlocks: recordedBlocks,
 };
 
 export type TableName =
   | "protocols"
   | "troveManagers"
   | "troveData"
+  | "eventData"
   | "coreImmutables"
   | "coreColImmutables"
   | "corePoolData"
   | "colPoolData"
-  | "errorLogs";
+  | "errorLogs"
+  | "recordedBlocks";
 
 export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];

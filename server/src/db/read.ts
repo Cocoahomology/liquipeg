@@ -1,6 +1,14 @@
 import { eq, desc, and, sql } from "drizzle-orm";
 import { CoreImmutables, TroveDataEntry, CorePoolDataEntry } from "../utils/types";
-import { protocols, coreImmutables, coreColImmutables, troveManagers, corePoolData, colPoolData } from "./schema";
+import {
+  protocols,
+  coreImmutables,
+  coreColImmutables,
+  troveManagers,
+  corePoolData,
+  colPoolData,
+  eventData,
+} from "./schema";
 import db from "./db";
 
 async function getProtocol(protocolId: number, chain: string) {
@@ -9,16 +17,25 @@ async function getProtocol(protocolId: number, chain: string) {
   });
 }
 
-async function getTroveManagersForProtocol(protocolId: number, chain: string) {
+async function getTroveManagersForProtocol(protocolId: number, chain: string, troveManagerIndex?: number) {
   const protocol = await getProtocol(protocolId, chain);
   if (!protocol) return [];
 
   return await db.query.troveManagers.findMany({
-    where: eq(troveManagers.protocolPk, protocol.pk),
+    where: and(
+      eq(troveManagers.protocolPk, protocol.pk),
+      ...([troveManagerIndex !== undefined && eq(troveManagers.troveManagerIndex, troveManagerIndex)].filter(
+        Boolean
+      ) as any[])
+    ),
   });
 }
 
-export async function getLatestCoreImmutables(protocolId: number, chain: string): Promise<CoreImmutables | null> {
+export async function getLatestCoreImmutables(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex?: number
+): Promise<CoreImmutables | null> {
   const protocol = await getProtocol(protocolId, chain);
   if (!protocol) return null;
 
@@ -29,7 +46,7 @@ export async function getLatestCoreImmutables(protocolId: number, chain: string)
 
   if (!latestCoreImmutable) return null;
 
-  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
   if (!troveMgrs.length) return null;
 
   const latestColImmutables = await Promise.all(
@@ -67,11 +84,11 @@ export async function getLatestCoreImmutables(protocolId: number, chain: string)
   };
 }
 
-export async function getLatestTroveDataEntries(protocolId: number, chain: string) {
+export async function getLatestTroveDataEntries(protocolId: number, chain: string, troveManagerIndex?: number) {
   const protocol = await getProtocol(protocolId, chain);
   if (!protocol) return null;
 
-  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
   if (!troveMgrs.length) return null;
 
   // window function for performance
@@ -137,7 +154,11 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
   return troveDataByManager.filter((td): td is NonNullable<typeof td> => td !== null);
 }
 
-export async function getLatestPoolDataEntries(protocolId: number, chain: string): Promise<CorePoolDataEntry | null> {
+export async function getLatestPoolDataEntries(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex?: number
+): Promise<CorePoolDataEntry | null> {
   const protocol = await getProtocol(protocolId, chain);
   if (!protocol) return null;
 
@@ -148,7 +169,7 @@ export async function getLatestPoolDataEntries(protocolId: number, chain: string
 
   if (!latestCorePool) return null;
 
-  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
   if (!troveMgrs.length) return null;
 
   const latestColPool = await Promise.all(
@@ -178,4 +199,35 @@ export async function getLatestPoolDataEntries(protocolId: number, chain: string
     totalCollaterals: latestCorePool.totalCollaterals,
     collateralPoolData: latestColPool.filter((cp): cp is NonNullable<typeof cp> => cp !== null),
   };
+}
+
+export async function getEventData(protocolId: number, chain: string, eventName?: string, troveManagerIndex?: number) {
+  const protocol = await getProtocol(protocolId, chain);
+  if (!protocol) return null;
+
+  const baseQuery = db
+    .select({
+      troveManagerIndex: troveManagers.troveManagerIndex,
+      blockNumber: eventData.blockNumber,
+      txHash: eventData.txHash,
+      logIndex: eventData.logIndex,
+      eventName: eventData.eventName,
+      eventData: eventData.eventData,
+    })
+    .from(eventData)
+    .innerJoin(troveManagers, eq(eventData.troveManagerPk, troveManagers.pk))
+    .innerJoin(protocols, eq(troveManagers.protocolPk, protocols.pk))
+    .where(
+      and(
+        eq(protocols.protocolId, protocolId),
+        eq(protocols.chain, chain),
+        ...([
+          eventName && eq(eventData.eventName, eventName),
+          troveManagerIndex && eq(troveManagers.troveManagerIndex, troveManagerIndex),
+        ].filter(Boolean) as any[])
+      )
+    )
+    .orderBy(desc(eventData.blockNumber));
+
+  return await baseQuery;
 }

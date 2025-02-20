@@ -1,9 +1,9 @@
 import db from "./db";
-import { getTable } from "./schema";
+import { getTable, recordedBlocks } from "./schema";
 import { Adapter } from "../utils/adapter.type";
 import { ErrorLoggerService } from "../utils/bunyan";
-import { TroveDataEntry, CorePoolDataEntry, CoreImmutablesEntry } from "../utils/types";
-import { eq, and } from "drizzle-orm";
+import { TroveDataEntry, CorePoolDataEntry, CoreImmutablesEntry, EventDataEntry } from "../utils/types";
+import { eq, and, sql } from "drizzle-orm";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 const retry = require("async-retry");
 import protocolData from "../data/protocolData";
@@ -11,6 +11,7 @@ import protocolData from "../data/protocolData";
 // FIX: types throughout this file
 
 export async function insertEntriesFromAdapter(adapterFn: keyof Adapter, data: object[], options: InsertOptions = {}) {
+  if (data.length === 0) return;
   const mergedOptions = { ...DEFAULT_INSERT_OPTIONS, ...options };
   switch (adapterFn) {
     case "fetchTroves":
@@ -21,6 +22,9 @@ export async function insertEntriesFromAdapter(adapterFn: keyof Adapter, data: o
       break;
     case "fetchImmutables":
       await insertEntries(data as CoreImmutablesEntry[], mergedOptions, insertCoreImmutables, "coreImmutables");
+      break;
+    case "fetchTroveOperations":
+      await insertEntries(data as EventDataEntry[], mergedOptions, insertEventData, "eventData");
       break;
   }
 }
@@ -75,8 +79,8 @@ async function insertEntries(
     trx: any,
     data: any,
     protocolPk: number,
-    blockNumber: number,
-    onConflict: "error" | "ignore"
+    onConflict: "error" | "ignore",
+    blockNumber?: number
   ) => Promise<void>,
   tableName: string
 ) {
@@ -133,6 +137,19 @@ async function insertEntries(
     }
   }
 
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: tableName,
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
   await db.transaction(async (trx) => {
     await Promise.all(
       data.map(async (entry) => {
@@ -142,19 +159,14 @@ async function insertEntries(
         validateRows([entry], allowNullDbValues);
         await retry(
           async () => {
-            await insertFn(trx, entry, protocolPk!, blockNumber, onConflict);
+            await insertFn(trx, entry, protocolPk!, onConflict, blockNumber);
           },
           {
             retries: retryCount,
             minTimeout: retryDelay,
           }
         ).catch((error: Error) => {
-          logger.error({
-            error: error.message,
-            keyword: "critical",
-            table: tableName,
-            chain,
-          });
+          logFirstError(error, chain);
           throw error;
         });
       })
@@ -166,8 +178,8 @@ async function insertTroveData(
   trx: any,
   troveDataEntry: TroveDataEntry,
   protocolPk: number,
-  blockNumber: number,
-  onConflict: "error" | "ignore"
+  onConflict: "error" | "ignore",
+  blockNumber?: number
 ) {
   const troveDataTable = getTable("troveData");
 
@@ -189,8 +201,8 @@ async function insertCoreImmutables(
   trx: any,
   immutablesData: CoreImmutablesEntry,
   protocolPk: number,
-  blockNumber: number,
-  onConflict: "error" | "ignore"
+  onConflict: "error" | "ignore",
+  blockNumber?: number
 ) {
   const coreImmutablesTable = getTable("coreImmutables");
   const coreColImmutablesTable = getTable("coreColImmutables");
@@ -231,8 +243,8 @@ async function insertCorePoolData(
   trx: any,
   poolData: CorePoolDataEntry,
   protocolPk: number,
-  blockNumber: number,
-  onConflict: "error" | "ignore"
+  onConflict: "error" | "ignore",
+  blockNumber?: number
 ) {
   const corePoolDataTable = getTable("corePoolData");
   const colPoolDataTable = getTable("colPoolData");
@@ -267,4 +279,46 @@ async function insertCorePoolData(
       }
     })
   );
+}
+
+async function insertEventData(
+  trx: any,
+  eventData: EventDataEntry,
+  protocolPk: number,
+  onConflict: "error" | "ignore"
+) {
+  const eventDataTable = getTable("eventData");
+
+  const { getTroveManagerIndex, protocolId, chain, ...remainingEventData } = eventData;
+
+  const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+
+  const eventDataEntry = {
+    troveManagerPk: troveManagerPk,
+    getTroveManagerIndex: getTroveManagerIndex,
+    ...remainingEventData,
+  };
+
+  if (onConflict === "ignore") {
+    await trx.insert(eventDataTable).values(eventDataEntry).onConflictDoNothing();
+  } else {
+    await trx.insert(eventDataTable).values(eventDataEntry);
+  }
+}
+
+export async function upsertRecordedBlocks(db: any, protocolPk: number, startBlock: number, endBlock: number) {
+  await db
+    .insert(recordedBlocks)
+    .values({
+      protocolPk,
+      startBlock,
+      endBlock,
+    })
+    .onConflictDoUpdate({
+      target: recordedBlocks.protocolPk,
+      set: {
+        startBlock: sql`LEAST(${recordedBlocks.startBlock}, EXCLUDED.startBlock)`,
+        endBlock: sql`GREATEST(${recordedBlocks.endBlock}, EXCLUDED.endBlock)`,
+      },
+    });
 }
