@@ -31,19 +31,21 @@ export type EventDataEntry = {
   protocolId: number;
   blockNumber: number;
   getTroveManagerIndex: number;
+  chain: string;
   txHash: string;
   logIndex: number;
-  chain: string;
   eventName: string;
-  eventData: EventData[];
+  eventData: object; // FIX
 };
 
 export type EventData = {
   getTroveManagerIndex?: number;
-  txHash: string;
+  blockNumber: number;
   chain: string;
+  txHash: string;
+  logIndex: number;
   eventName: string;
-  eventData: any; // FIX
+  eventData: object; // FIX
 };
 
 export type CoreImmutablesEntry = {
