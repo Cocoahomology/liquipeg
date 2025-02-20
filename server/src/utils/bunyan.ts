@@ -12,9 +12,6 @@ type PostgresStream = Stream & {
   end: (callback: () => void) => void;
 };
 
-let stream: PostgresStream | null = null;
-let logger: Logger | null = null;
-
 export class ErrorLoggerService {
   private static instance: ErrorLoggerService;
   private logger: Logger | null = null;
@@ -75,13 +72,12 @@ export class ErrorLoggerService {
       this.initLogger();
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.logger!.error(params, (err: Error | undefined) => {
         if (err) {
-          reject(err);
-        } else {
-          resolve();
+          console.error("Error writing to log:", err);
         }
+        resolve();
       });
     });
   }
