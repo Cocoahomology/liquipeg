@@ -1,9 +1,10 @@
 import { ChainApi } from "@defillama/sdk";
-import { EventData, CoreImmutables, CoreColImmutables, CoreImmutablesEntry, ColPoolData } from "../../utils/types";
+import { EventData, CoreColImmutables, ColPoolData } from "../../utils/types";
 import { getEvmEventLogs } from "../../utils/processTransactions";
 import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManagerAbi.json";
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
 import { getLatestCoreImmutables } from "../../db/read";
+import { PromisePool } from "@supercharge/promise-pool";
 
 const abi = {
   Troves:
@@ -90,26 +91,23 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
       itemAbi: "getTroveManager",
       target: colRegistryAddress,
     })) as string[];
-    let acc = [] as EventData[];
-    await Promise.all(
-      troveManagersList.map(async (target, index) => {
-        await Promise.all(
-          Object.entries(liquityFormattedEventAbi).map(async ([eventName, eventAbi]) => {
-            const res = await getEvmEventLogs(eventName, fromBlock, toBlock, api, [
-              {
-                target: target,
-                topic: eventAbi.topic,
-                abi: eventAbi.abi,
-                argKeys: eventAbi.keys,
-              },
-            ]);
-            acc = [...acc, ...res.map((obj) => ({ ...obj, getTroveManagerIndex: index }))];
-          })
-        );
-      })
-    );
 
-    return acc;
+    let results = [] as EventData[];
+    await PromisePool.for(troveManagersList).process(async (target, index) => {
+      for (const [eventName, eventAbi] of Object.entries(liquityFormattedEventAbi)) {
+        const res = await getEvmEventLogs(eventName, fromBlock, toBlock, api, [
+          {
+            target: target,
+            topic: eventAbi.topic,
+            abi: eventAbi.abi,
+            argKeys: eventAbi.keys,
+          },
+        ]);
+        results.push(...res.map((obj) => ({ ...obj, getTroveManagerIndex: index })));
+      }
+    });
+
+    return results;
   };
 }
 
@@ -151,7 +149,6 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
               return { address: addressesRegistry, index };
             } catch (error) {
               if (i === retryCount - 1) {
-                // FIX: log error
                 missingAddressesRegistryIndexes.push(index);
                 return null;
               }

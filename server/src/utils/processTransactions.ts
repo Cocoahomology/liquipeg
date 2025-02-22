@@ -3,8 +3,10 @@ import { ethers } from "ethers";
 import { Chain } from "@defillama/sdk/build/general";
 import { EventParams, PartialEventParams } from "./adapter.type";
 import { EventData } from "./types";
-import { getProvider } from "@defillama/sdk/build/general";
 import { PromisePool } from "@supercharge/promise-pool";
+import retry from "async-retry";
+import { ErrorLoggerService } from "../utils/bunyan";
+import { withTimeout } from "./async";
 
 export const getEvmEventLogs = async (
   eventName: string,
@@ -13,160 +15,148 @@ export const getEvmEventLogs = async (
   api: ChainApi,
   paramsArray: (EventParams | PartialEventParams)[]
 ) => {
+  const logger = ErrorLoggerService.getInstance();
   let eventData = [] as EventData[];
 
-  const getLogsPromises = Promise.all(
-    paramsArray.map(async (params) => {
-      let {
-        target,
-        topic,
-        abi,
-        logKeys,
-        argKeys,
-        txKeys,
-        topics,
-        fixedEventData,
-        inputDataExtraction,
-        selectIndexesFromArrays,
-        functionSignatureFilter,
-        filter,
-        mapTokens,
-      } = params;
+  await PromisePool.for(paramsArray).process(async (params) => {
+    let {
+      target,
+      topic,
+      abi,
+      logKeys,
+      argKeys,
+      txKeys,
+      topics,
+      fixedEventData,
+      inputDataExtraction,
+      selectIndexesFromArrays,
+      functionSignatureFilter,
+      filter,
+      mapTokens,
+    } = params;
 
-      if (!logKeys) {
-        logKeys = {
-          blockNumber: "blockNumber",
-          txHash: "transactionHash",
-        };
-        if (!(topic && abi)) {
-          throw new Error(`event ${eventName} on chain ${api.chain} with target ${target} is missing param(s).`);
-        }
+    if (!logKeys) {
+      logKeys = {
+        blockNumber: "blockNumber",
+        txHash: "transactionHash",
+      };
+      if (!(topic && abi)) {
+        throw new Error(`event ${eventName} on chain ${api.chain} with target ${target} is missing param(s).`);
+      }
 
-        let logs = [] as any[];
+      let logs = [] as any[];
 
-        for (let i = 0; i < 5; i++) {
+      await retry(
+        async (bail) => {
           try {
-            logs = await api.getLogs({
-              target: target!,
-              topic: topic,
-              keys: [],
-              fromBlock: fromBlock,
-              toBlock: toBlock,
-              topics: topics as string[],
-            });
+            logs = await withTimeout(
+              api.getLogs({
+                target: target!,
+                topic: topic,
+                keys: [],
+                fromBlock: fromBlock,
+                toBlock: toBlock,
+                topics: topics as string[],
+              }),
+              { milliseconds: 30000, message: `getLogs timeout for ${eventName} on chain ${api.chain}` }
+            );
             if (logs.length === 0) {
               console.info(
                 `No logs received for event ${eventName} on chain ${api.chain} from ${fromBlock} to ${toBlock} with topic ${topic}.`
               );
             }
-            break;
-          } catch (e) {
-            if (i >= 4) {
-              console.error(target, e);
-            } else {
-              continue;
-            }
+          } catch (e: any) {
+            console.error(target, e);
+            bail(e);
           }
+        },
+        {
+          retries: 5,
+          maxTimeout: 10000,
         }
+      );
 
-        let data: {
-          [key: number]: { blockNumber?: number; txHash?: string; logIndex?: number; log?: { [key: string]: any } };
-        } = {};
-        let dataKeysToFilter = [] as any[];
-        const provider = getProvider(api.chain);
-        const iface = new ethers.Interface([abi]);
+      let data: {
+        [key: number]: { blockNumber?: number; txHash?: string; logIndex?: number; log?: { [key: string]: any } };
+      } = {};
+      let dataKeysToFilter = [] as any[];
+      const iface = new ethers.Interface([abi]);
 
-        // FIX need error catching here
-        await Promise.all(
-          logs.map(async (txLog, i) => {
-            data[i] = data[i] || {};
-            data[i].blockNumber = txLog.blockNumber;
-            data[i].txHash = txLog.transactionHash;
-            data[i].logIndex = txLog.logIndex;
-            /*
-            Object.entries(logKeys).map(([eventKey, logKey]) => {
-              const value = txLog[logKey];
-              if (typeof value !== EventKeyTypes[eventKey]) {
+      await PromisePool.for(logs)
+        .withConcurrency(20)
+        .process(async (txLog, i) => {
+          data[i] = data[i] || {};
+          data[i].blockNumber = txLog.blockNumber;
+          data[i].txHash = txLog.transactionHash;
+          data[i].logIndex = txLog.logIndex;
+
+          let parsedLog = {} as any;
+          try {
+            parsedLog = iface.parseLog({
+              topics: txLog.topics,
+              data: txLog.data,
+            });
+          } catch (e) {
+            console.error(
+              `WARNING: Unable to parse log for event ${eventName} on chain ${api.chain}, SKIPPING TX with hash ${txLog.transactionHash}`
+            );
+            dataKeysToFilter.push(i);
+            return;
+          }
+
+          if (argKeys) {
+            try {
+              const args = parsedLog?.args;
+              if (args === undefined || args.length === 0) {
                 throw new Error(
-                  `Type of ${eventKey} retrieved using ${logKey} is ${typeof value} when it must be ${
-                    EventKeyTypes[eventKey]
-                  }.`
+                  `Unable to get log args for event ${eventName} on chain ${api.chain} with arg keys ${argKeys}.`
                 );
               }
-              data[i][eventKey] = value;
-            });
-            */
-            let parsedLog = {} as any;
-            try {
-              parsedLog = iface.parseLog({
-                topics: txLog.topics,
-                data: txLog.data,
+              Object.entries(argKeys).map(([eventKey, argKey]) => {
+                let value = args[argKey];
+                if (typeof value === "bigint") {
+                  value = value.toString();
+                }
+
+                data[i]["log"] = data[i]["log"] || {};
+                data[i]["log"][eventKey] = value;
               });
-            } catch (e) {
-              console.error(
-                `WARNING: Unable to parse log for event ${eventName} on chain ${api.chain}, SKIPPING TX with hash ${txLog.transactionHash}`
-              );
-              dataKeysToFilter.push(i);
+              if (filter?.includeArg) {
+                let toFilter = true;
+                const includeArgArray = filter.includeArg;
+                includeArgArray.map((argMappingToInclude) => {
+                  const argKeyToInclude = Object.keys(argMappingToInclude)[0];
+                  const argValueToInclude = Object.values(argMappingToInclude)[0];
+                  if (args[argKeyToInclude] === argValueToInclude) {
+                    toFilter = false;
+                  }
+                });
+                if (toFilter) dataKeysToFilter.push(i);
+              }
+              if (filter?.excludeArg) {
+                let toFilter = false;
+                const excludeArgArray = filter.excludeArg;
+                excludeArgArray.map((argMappingToExclude) => {
+                  const argKeyToExclude = Object.keys(argMappingToExclude)[0];
+                  const argValueToExclude = Object.values(argMappingToExclude)[0];
+                  if (args[argKeyToExclude] === argValueToExclude) {
+                    toFilter = true;
+                  }
+                });
+                if (toFilter) dataKeysToFilter.push(i);
+              }
+            } catch (error) {
+              const errString = `Unable to get log args for event ${eventName} on chain ${
+                api.chain
+              } with arg keys ${argKeys}. SKIPPING TX with hash ${txLog.transactionHash}: ${
+                error instanceof Error ? error.message : String(error)
+              }`;
+              console.error(errString);
+              logger.error({ error: errString, keyword: "missingValues", chain: api.chain });
               return;
             }
-
-            if (argKeys) {
-              try {
-                const args = parsedLog?.args;
-                if (args === undefined || args.length === 0) {
-                  throw new Error(
-                    `Unable to get log args for event ${eventName} on chain ${api.chain} with arg keys ${argKeys}.`
-                  );
-                }
-                Object.entries(argKeys).map(([eventKey, argKey]) => {
-                  const value = args[argKey];
-                  /*
-                  if (
-                    typeof value !== EventKeyTypes[eventKey] &&
-                    !Array.isArray(value)
-                  ) {
-                    throw new Error(
-                      `Type of ${eventKey} retrieved using ${argKey} is ${typeof value} when it must be ${
-                        EventKeyTypes[eventKey]
-                      }.`
-                    );
-                  }
-                  */
-                  data[i]["log"] = data[i]["log"] || {};
-                  data[i]["log"][eventKey] = value;
-                });
-                if (filter?.includeArg) {
-                  let toFilter = true;
-                  const includeArgArray = filter.includeArg;
-                  includeArgArray.map((argMappingToInclude) => {
-                    const argKeyToInclude = Object.keys(argMappingToInclude)[0];
-                    const argValueToInclude = Object.values(argMappingToInclude)[0];
-                    if (args[argKeyToInclude] === argValueToInclude) {
-                      toFilter = false;
-                    }
-                  });
-                  if (toFilter) dataKeysToFilter.push(i);
-                }
-                if (filter?.excludeArg) {
-                  let toFilter = false;
-                  const excludeArgArray = filter.excludeArg;
-                  excludeArgArray.map((argMappingToExclude) => {
-                    const argKeyToExclude = Object.keys(argMappingToExclude)[0];
-                    const argValueToExclude = Object.values(argMappingToExclude)[0];
-                    if (args[argKeyToExclude] === argValueToExclude) {
-                      toFilter = true;
-                    }
-                  });
-                  if (toFilter) dataKeysToFilter.push(i);
-                }
-              } catch (error) {
-                console.error(
-                  `Unable to get log args for event ${eventName} on chain ${api.chain} with arg keys ${argKeys}. SKIPPING TX with hash ${txLog.transactionHash}`
-                );
-                return;
-              }
-            }
-            /*
+          }
+          /*
             if (txKeys) {
               const tx = await provider.getTransaction(txLog.transactionHash);
               if (!tx) {
@@ -181,8 +171,7 @@ export const getEvmEventLogs = async (
                     throw new Error(
                       `Type of ${eventKey} retrieved using ${logKey} is ${typeof value} when it must be ${
                         EventKeyTypes[eventKey]
-                      }.`
-                    );
+                      }.`);
                   }
                   data[i][eventKey] = value;
                 });
@@ -273,8 +262,7 @@ export const getEvmEventLogs = async (
                       throw new Error(
                         `Type of ${eventKey} retrieved using ${inputDataKey} with inputDataExtraction is ${typeof value} when it must be ${
                           EventKeyTypes[eventKey]
-                        }.`
-                      );
+                        }.`);
                     }
                     data[i][eventKey] = value;
                   }
@@ -313,31 +301,31 @@ export const getEvmEventLogs = async (
                   throw new Error(
                     `Type of ${eventKey} in fixedEventData is ${typeof value} when it must be ${
                       EventKeyTypes[eventKey]
-                    }.`
-                  );
+                    }.`);
                 }
                 data[i][eventKey] = value;
               });
             }
             */
-          })
-        );
-
-        dataKeysToFilter.map((key) => {
-          delete data[key];
         });
 
-        eventData = Object.values(data).map((event) => {
-          return {
-            txHash: event.txHash!,
-            chain: api.chain,
-            eventName: eventName,
-            logIndex: event.logIndex,
-            eventData: event.log,
-          };
-        });
+      dataKeysToFilter.map((key) => {
+        delete data[key];
+      });
 
-        /*        
+      Object.values(data).map((event) => {
+        const eventEntry: EventData = {
+          txHash: String(event.txHash || ""),
+          blockNumber: Number(event.blockNumber || 0),
+          chain: String(api.chain || ""),
+          eventName: String(eventName || ""),
+          logIndex: Number(event.logIndex || 0),
+          eventData: event.log || {},
+        };
+        eventData.push(eventEntry);
+      });
+
+      /*        
         const filteredData = eventData.filter((log) => {
           let toFilter = false;
           toFilter =
@@ -354,10 +342,9 @@ export const getEvmEventLogs = async (
         });
         accEventData = [...accEventData, ...filteredData];
         */
-      }
-    })
-  );
-  await getLogsPromises;
+    }
+  });
+
   return eventData;
 };
 

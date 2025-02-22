@@ -80,7 +80,8 @@ export const getContractCreationDataEtherscan = async (chain: string, address: s
     return (
       await fetchWithRetry(
         `${v2Endpoint}/api?chainid=${chainId}&module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`,
-        3
+        3,
+        100000
       )
     ).result[0] as any;
   } catch (error) {

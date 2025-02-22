@@ -4,6 +4,7 @@ import Logger from "bunyan";
 import dotenv from "dotenv";
 import path from "path";
 const bunyanPostgresStream = require("bunyan-postgres-stream");
+import { withTimeout } from "./async";
 
 // Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -72,14 +73,17 @@ export class ErrorLoggerService {
       this.initLogger();
     }
 
-    return new Promise((resolve) => {
-      this.logger!.error(params, (err: Error | undefined) => {
-        if (err) {
-          console.error("Error writing to log:", err);
-        }
-        resolve();
-      });
-    });
+    return withTimeout(
+      new Promise<void>((resolve) => {
+        this.logger!.error(params, (err: Error | undefined) => {
+          if (err) {
+            console.error("Error writing to log:", err);
+          }
+          resolve();
+        });
+      }),
+      { milliseconds: 5000, message: "Logging operation timed out after 5 seconds" }
+    );
   }
 
   public async closeLogger() {

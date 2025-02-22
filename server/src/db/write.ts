@@ -5,8 +5,9 @@ import { ErrorLoggerService } from "../utils/bunyan";
 import { TroveDataEntry, CorePoolDataEntry, CoreImmutablesEntry, EventDataEntry } from "../utils/types";
 import { eq, and, sql } from "drizzle-orm";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
-const retry = require("async-retry");
+import retry from "async-retry";
 import protocolData from "../data/protocolData";
+import { PromisePool } from "@supercharge/promise-pool";
 
 // FIX: types throughout this file
 
@@ -151,8 +152,10 @@ async function insertEntries(
   };
 
   await db.transaction(async (trx) => {
-    await Promise.all(
-      data.map(async (entry) => {
+    await PromisePool.for(data)
+      .withConcurrency(20)
+      .withTaskTimeout(30000)
+      .process(async (entry) => {
         const { protocolId, blockNumber, chain } = entry;
         const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
 
@@ -169,8 +172,7 @@ async function insertEntries(
           logFirstError(error, chain);
           throw error;
         });
-      })
-    );
+      });
   });
 }
 
@@ -219,24 +221,22 @@ async function insertCoreImmutables(
 
   await trx.insert(coreImmutablesTable).values(coreImmutablesEntry);
 
-  await Promise.all(
-    coreCollateralImmutables.map(async (coreColImmutables) => {
-      const { getTroveManagerIndex } = coreColImmutables;
+  await PromisePool.for(coreCollateralImmutables).process(async (coreColImmutables) => {
+    const { getTroveManagerIndex } = coreColImmutables;
 
-      const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
 
-      const colPoolDataEntry = {
-        troveManagerPk,
-        blockNumber,
-        ...coreColImmutables,
-      };
-      if (onConflict === "ignore") {
-        await trx.insert(coreColImmutablesTable).values(colPoolDataEntry).onConflictDoNothing();
-      } else {
-        await trx.insert(coreColImmutablesTable).values(colPoolDataEntry);
-      }
-    })
-  );
+    const colPoolDataEntry = {
+      troveManagerPk,
+      blockNumber,
+      ...coreColImmutables,
+    };
+    if (onConflict === "ignore") {
+      await trx.insert(coreColImmutablesTable).values(colPoolDataEntry).onConflictDoNothing();
+    } else {
+      await trx.insert(coreColImmutablesTable).values(colPoolDataEntry);
+    }
+  });
 }
 
 async function insertCorePoolData(
@@ -261,24 +261,22 @@ async function insertCorePoolData(
 
   await trx.insert(corePoolDataTable).values(corePoolDataEntry);
 
-  await Promise.all(
-    collateralPoolData.map(async (colPoolData) => {
-      const { getTroveManagerIndex } = colPoolData;
+  await PromisePool.for(collateralPoolData).process(async (colPoolData) => {
+    const { getTroveManagerIndex } = colPoolData;
 
-      const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
 
-      const colPoolDataEntry = {
-        troveManagerPk,
-        blockNumber,
-        ...colPoolData,
-      };
-      if (onConflict === "ignore") {
-        await trx.insert(colPoolDataTable).values(colPoolDataEntry).onConflictDoNothing();
-      } else {
-        await trx.insert(colPoolDataTable).values(colPoolDataEntry);
-      }
-    })
-  );
+    const colPoolDataEntry = {
+      troveManagerPk,
+      blockNumber,
+      ...colPoolData,
+    };
+    if (onConflict === "ignore") {
+      await trx.insert(colPoolDataTable).values(colPoolDataEntry).onConflictDoNothing();
+    } else {
+      await trx.insert(colPoolDataTable).values(colPoolDataEntry);
+    }
+  });
 }
 
 async function insertEventData(
