@@ -1,21 +1,21 @@
 import * as sdk from "@defillama/sdk";
 import { getLatestBlock } from "@defillama/sdk/build/util";
 import { Chain } from "@defillama/sdk/build/general";
-import protocols from "../data/protocolData";
 import adapters from "../adapters";
 import { maxBlocksToQueryByChain } from "./constants";
-import { store } from "./s3";
-import { Adapter } from "./adapter.type";
-import { getCurrentUnixTimestamp } from "./date";
-import type { CorePoolDataEntry, RecordedBlocks, TroveDataEntry, CoreImmutablesEntry, EventDataEntry } from "./types";
+import type {
+  CorePoolDataEntry,
+  RecordedBlocksEntryWithChain,
+  TroveDataEntry,
+  CoreImmutablesEntry,
+  EventDataEntry,
+} from "./types";
 import { wait } from "./etherscan";
-import { lookupBlock } from "@defillama/sdk/build/util";
 import { Protocol } from "../data/types";
-import testRecordedBlocks from "./testRecordedBlocks.json";
 import retry from "async-retry";
-const fs = require("fs");
 import { ErrorLoggerService } from "./bunyan";
-import { insertEntriesFromAdapter } from "../db/write";
+import { insertEntriesFromAdapter, insertRecordedBlockEntries } from "../db/write";
+import { getRecordedBlocksByProtocolId } from "../db/read";
 import { InsertOptions } from "../db/types";
 import { withTimeout } from "./async";
 
@@ -53,7 +53,11 @@ async function getLatestBlockWithLogging(
   }
 }
 
-const getBlocksForRunningAdapter = async (protocolDbName: string, chain: string, recordedBlocks: RecordedBlocks) => {
+const getBlocksForRunningAdapter = async (
+  protocolDbName: string,
+  chain: string,
+  recordedBlocks: RecordedBlocksEntryWithChain
+) => {
   let startBlock = undefined;
   let endBlock = undefined;
 
@@ -72,7 +76,7 @@ const getBlocksForRunningAdapter = async (protocolDbName: string, chain: string,
   }
 
   const maxBlocksToQuery = maxBlocksToQueryByChain[chain] ?? maxBlocksToQueryByChain.default * 10;
-  let lastRecordedEndBlock = recordedBlocks[`${protocolDbName}:${chain}`]?.endBlock;
+  let lastRecordedEndBlock = recordedBlocks.endBlock;
   if (!lastRecordedEndBlock) {
     const defaultStartBlock = endBlock - maxBlocksToQuery;
     lastRecordedEndBlock = defaultStartBlock;
@@ -105,9 +109,9 @@ export const runAdapterSnapshot = async (
   insertOptions: InsertOptions,
   updateImmutables: boolean = false
 ) => {
-  console.log(`Getting snapshot for protocol ${protocol.displayName}`);
-  const logger = ErrorLoggerService.getInstance();
   const { id, protocolDbName } = protocol;
+  console.log(`Getting snapshot for ${id} ${protocolDbName}`);
+  const logger = ErrorLoggerService.getInstance();
 
   const adapter = await importAdapter(protocolDbName, id, logger);
 
@@ -122,7 +126,7 @@ export const runAdapterSnapshot = async (
   if (adapter.fetchTroves) {
     const fetchTrovesFns = adapter.fetchTroves;
     console.log("Fetching Troves");
-    await Promise.all(
+    await Promise.allSettled(
       Object.entries(fetchTrovesFns).map(async ([chain, fetchTrovesFn]) => {
         try {
           const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "troveData");
@@ -153,12 +157,12 @@ export const runAdapterSnapshot = async (
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
-            keyword: "critical",
+            keyword: "missingValues",
             table: "troveData",
             chain: chain,
             protocolId: id,
           });
-          throw error;
+          console.error(`Fetching troves for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
       })
     );
@@ -167,10 +171,10 @@ export const runAdapterSnapshot = async (
   if (adapter.fetchImmutables && updateImmutables) {
     const fetchImmutablesFns = adapter.fetchImmutables;
     console.log("Fetching Immutables");
-    await Promise.all(
+    await Promise.allSettled(
       Object.entries(fetchImmutablesFns).map(async ([chain, fetchImmutablesFn]) => {
         try {
-          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "troveData");
+          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "coreImmutables");
           let coreImmutablesEntry = {} as CoreImmutablesEntry;
           await retry(
             async () => {
@@ -194,12 +198,12 @@ export const runAdapterSnapshot = async (
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
-            keyword: "critical",
+            keyword: "missingValues",
             table: "coreImmutables",
             chain: chain,
             protocolId: id,
           });
-          throw error;
+          console.error(`Fetching immutables for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
       })
     );
@@ -208,10 +212,10 @@ export const runAdapterSnapshot = async (
   if (adapter.fetchCorePoolData) {
     const fetchCorePoolDataFns = adapter.fetchCorePoolData;
     console.log("Fetching Core pool data");
-    await Promise.all(
+    await Promise.allSettled(
       Object.entries(fetchCorePoolDataFns).map(async ([chain, fetchCorePoolDataFn]) => {
         try {
-          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "troveData");
+          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "corePoolData");
           let corePoolDataEntry = {} as CorePoolDataEntry;
           await retry(
             async () => {
@@ -238,12 +242,12 @@ export const runAdapterSnapshot = async (
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
-            keyword: "critical",
+            keyword: "missingValues",
             table: "corePoolData",
             chain: chain,
             protocolId: id,
           });
-          throw error;
+          console.error(`Fetching Core pool data for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
       })
     );
@@ -251,9 +255,9 @@ export const runAdapterSnapshot = async (
 };
 
 export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, insertOptions: InsertOptions) => {
-  console.log(`Getting trove operations for ${protocol.id} ${protocol.protocolDbName}`);
-  const logger = ErrorLoggerService.getInstance();
   const { id, protocolDbName } = protocol;
+  console.log(`Getting trove operations for ${id} ${protocolDbName}`);
+  const logger = ErrorLoggerService.getInstance();
 
   const adapter = await importAdapter(protocolDbName, id, logger);
 
@@ -265,26 +269,7 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
     ...insertOptions,
   };
 
-  const recordedBlocks = testRecordedBlocks as RecordedBlocks;
-  /*
-  const recordedBlocksFilename = `blocks-${bridgeDbName}.json`;
-  const recordedBlocks = (
-    await retry(
-      async (_bail: any) =>
-        await axios.get(`https://llama-bridges-data.s3.eu-central-1.amazonaws.com/${recordedBlocksFilename}`)
-    )
-  ).data as RecordedBlocks;
-  if (!recordedBlocks) {
-    const errString = `Unable to retrieve recordedBlocks from s3.`;
-    await insertErrorRow({
-      ts: currentTimestamp,
-      target_table: "transactions",
-      keyword: "critical",
-      error: errString,
-    });
-    throw new Error(errString);
-  }
-    */
+  const recordedBlocksList = await getRecordedBlocksByProtocolId(id);
 
   const fetchTroveOperationsFns = adapter.fetchTroveOperations;
   if (!fetchTroveOperationsFns) {
@@ -293,11 +278,18 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
     throw new Error(errString);
   }
 
+  let recordedBlockEntries = [] as RecordedBlocksEntryWithChain[];
   await Promise.allSettled(
     Object.keys(fetchTroveOperationsFns).map(async (chain, i) => {
       await wait(100 * i); // attempt to space out API calls
       try {
-        const { startBlock, endBlock } = await getBlocksForRunningAdapter(protocolDbName, chain, recordedBlocks);
+        const recordedBlocksEntry = recordedBlocksList.find((entry) => entry.chain === chain);
+        if (!recordedBlocksEntry) {
+          const errString = `No recorded blocks found for ${protocolDbName} on chain ${chain}.`;
+          logger.error({ error: errString, keyword: "missingBlocks", protocolId: id, chain: chain });
+          throw new Error(errString);
+        }
+        const { startBlock, endBlock } = await getBlocksForRunningAdapter(protocolDbName, chain, recordedBlocksEntry);
         if (startBlock == null) {
           const errString = `Unable to get blocks for ${protocolDbName} adapter on chain ${chain}.`;
           logger.error({ error: errString, keyword: "missingBlocks", protocolId: id, chain: chain });
@@ -306,23 +298,21 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
         await runTroveOperationsHistorical(startBlock, endBlock, protocol, chain as Chain, finalInsertOptions, true);
         console.log("endblock", endBlock);
 
-        /*
-        recordedBlocks[`${protocolDbName}:${chain}`] = recordedBlocks[`${protocolDbName}:${chain}`] || {};
-        recordedBlocks[`${protocolDbName}:${chain}`].startBlock =
-          recordedBlocks[`${protocolDbName}:${chain}`]?.startBlock ?? startBlock;
-        recordedBlocks[`${protocolDbName}:${chain}`].endBlock = endBlock;
-        */
+        recordedBlockEntries.push({
+          ...recordedBlocksEntry,
+          endBlock: endBlock,
+        });
       } catch (e) {
         const errString = `Trove operations for ${protocolDbName} on chain ${chain} failed, skipped, ${e}`;
-        logger.error({ error: errString, keyword: "critical", protocolId: id, chain: chain });
+        logger.error({ error: errString, keyword: "missingValues", protocolId: id, chain: chain });
         console.error(errString);
         return null;
       }
     })
   );
 
-  // await store(recordedBlocksFilename, JSON.stringify(recordedBlocks));
-  fs.writeFileSync("./testRecordedBlocks.json", JSON.stringify(recordedBlocks, null, 2));
+  await insertRecordedBlockEntries(recordedBlockEntries);
+
   console.log(`runTroveOperationsToCurrentBlock for ${protocol.displayName} successfully ran.`);
 };
 
@@ -501,6 +491,7 @@ export const runTroveOperationsHistorical = async (
               chain: chain,
             })
           );
+
           return eventData.map((event) => {
             if (event.getTroveManagerIndex == null) {
               throw new Error(`getTroveManagerIndex not found in event data for ${id} ${protocolDbName}-${chain}`);
@@ -524,7 +515,6 @@ export const runTroveOperationsHistorical = async (
       console.log(
         `${eventDataEntries.length} events were found for ${id} (${protocolDbName}-${chain}) from ${startBlockForQuery} to ${block}.`
       );
-
       await insertEntriesFromAdapter("fetchTroveOperations", eventDataEntries, insertOptions);
       console.log("finished inserting trove operations");
     } catch (e) {
