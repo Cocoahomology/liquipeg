@@ -68,22 +68,19 @@ export class ErrorLoggerService {
     table?: string;
     chain?: string;
     protocolId?: number;
-  }): Promise<void> {
+  }): void {
     if (!this.logger) {
       this.initLogger();
     }
 
-    return withTimeout(
-      new Promise<void>((resolve) => {
-        this.logger!.error(params, (err: Error | undefined) => {
-          if (err) {
-            console.error("Error writing to log:", err);
-          }
-          resolve();
-        });
-      }),
-      { milliseconds: 5000, message: "Logging operation timed out after 5 seconds" }
-    );
+    new Promise<void>((resolve) => {
+      this.logger!.error(params, (err: Error | undefined) => {
+        if (err) {
+          console.error("Error writing to log:", err);
+        }
+        resolve();
+      });
+    });
   }
 
   public async closeLogger() {
