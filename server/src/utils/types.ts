@@ -115,9 +115,9 @@ export type ColPoolData = {
   getYieldGainsPending: string;
 };
 
-export type RecordedBlocks = {
-  [adapterDbNameChain: string]: {
-    startBlock: number;
-    endBlock: number;
-  };
+export type RecordedBlocksEntryWithChain = {
+  protocolId: number;
+  chain: string;
+  startBlock: number;
+  endBlock: number;
 };

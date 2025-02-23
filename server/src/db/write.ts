@@ -2,7 +2,13 @@ import db from "./db";
 import { getTable, recordedBlocks } from "./schema";
 import { Adapter } from "../utils/adapter.type";
 import { ErrorLoggerService } from "../utils/bunyan";
-import { TroveDataEntry, CorePoolDataEntry, CoreImmutablesEntry, EventDataEntry } from "../utils/types";
+import {
+  TroveDataEntry,
+  CorePoolDataEntry,
+  CoreImmutablesEntry,
+  EventDataEntry,
+  RecordedBlocksEntryWithChain,
+} from "../utils/types";
 import { eq, and, sql } from "drizzle-orm";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 import retry from "async-retry";
@@ -157,21 +163,26 @@ async function insertEntries(
       .withTaskTimeout(30000)
       .process(async (entry) => {
         const { protocolId, blockNumber, chain } = entry;
-        const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
+        try {
+          const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
 
-        validateRows([entry], allowNullDbValues);
-        await retry(
-          async () => {
-            await insertFn(trx, entry, protocolPk!, onConflict, blockNumber);
-          },
-          {
-            retries: retryCount,
-            minTimeout: retryDelay,
-          }
-        ).catch((error: Error) => {
-          logFirstError(error, chain);
-          throw error;
-        });
+          validateRows([entry], allowNullDbValues);
+
+          await retry(
+            async () => {
+              await insertFn(trx, entry, protocolPk!, onConflict, blockNumber);
+            },
+            {
+              retries: retryCount,
+              minTimeout: retryDelay,
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error) {
+            logFirstError(error, chain);
+            throw error;
+          } else throw error;
+        }
       });
   });
 }
@@ -304,7 +315,79 @@ async function insertEventData(
   }
 }
 
-export async function upsertRecordedBlocks(db: any, protocolPk: number, startBlock: number, endBlock: number) {
+export async function insertRecordedBlockEntries(
+  recordedBlocksList: RecordedBlocksEntryWithChain[],
+  options: InsertOptions = {}
+) {
+  const {
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 3,
+    retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
+  } = options;
+
+  if (!recordedBlocksList.length) return;
+
+  const logger = ErrorLoggerService.getInstance();
+  const protocolsTable = getTable("protocols");
+  const protocolMap = new Map<string, number>();
+
+  for (const entry of recordedBlocksList) {
+    const { protocolId, chain } = entry;
+    const key = `${protocolId}-${chain}`;
+
+    if (!protocolMap.has(key)) {
+      const protocol = await db
+        .select()
+        .from(protocolsTable)
+        .where(and(eq(protocolsTable.protocolId, protocolId), eq(protocolsTable.chain, chain)));
+
+      if (protocol.length) {
+        protocolMap.set(key, protocol[0].pk);
+      } else {
+        throw new Error(`Protocol not found: ${protocolId} on chain ${chain}`);
+      }
+    }
+  }
+
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "recordedBlocks",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+  await db.transaction(async (trx) => {
+    await PromisePool.for(recordedBlocksList)
+      .withConcurrency(20)
+      .withTaskTimeout(30000)
+      .process(async (entry) => {
+        const { protocolId, chain, startBlock, endBlock } = entry;
+        try {
+          const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
+          await retry(
+            async () => {
+              await upsertRecordedBlocks(trx, protocolPk!, startBlock, endBlock);
+            },
+            {
+              retries: retryCount,
+              minTimeout: retryDelay,
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error) {
+            logFirstError(error, chain);
+            throw error;
+          } else throw error;
+        }
+      });
+  });
+}
+
+async function upsertRecordedBlocks(db: any, protocolPk: number, startBlock: number, endBlock: number) {
   await db
     .insert(recordedBlocks)
     .values({
@@ -315,8 +398,8 @@ export async function upsertRecordedBlocks(db: any, protocolPk: number, startBlo
     .onConflictDoUpdate({
       target: recordedBlocks.protocolPk,
       set: {
-        startBlock: sql`LEAST(${recordedBlocks.startBlock}, EXCLUDED.startBlock)`,
-        endBlock: sql`GREATEST(${recordedBlocks.endBlock}, EXCLUDED.endBlock)`,
+        startBlock: sql`LEAST(${startBlock}, recorded_blocks.start_block)`,
+        endBlock: sql`GREATEST(${endBlock}, recorded_blocks.end_block)`,
       },
     });
 }

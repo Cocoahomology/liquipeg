@@ -1,5 +1,5 @@
 import { eq, desc, and, sql } from "drizzle-orm";
-import { CoreImmutables, TroveDataEntry, CorePoolDataEntry } from "../utils/types";
+import { CoreImmutables, TroveDataEntry, CorePoolDataEntry, RecordedBlocksEntryWithChain } from "../utils/types";
 import {
   protocols,
   coreImmutables,
@@ -8,6 +8,7 @@ import {
   corePoolData,
   colPoolData,
   eventData,
+  recordedBlocks,
 } from "./schema";
 import db from "./db";
 
@@ -230,4 +231,17 @@ export async function getEventData(protocolId: number, chain: string, eventName?
     .orderBy(desc(eventData.blockNumber));
 
   return await baseQuery;
+}
+
+export async function getRecordedBlocksByProtocolId(protocolId: number): Promise<RecordedBlocksEntryWithChain[]> {
+  return await db
+    .select({
+      protocolId: protocols.protocolId,
+      startBlock: recordedBlocks.startBlock,
+      endBlock: recordedBlocks.endBlock,
+      chain: protocols.chain,
+    })
+    .from(recordedBlocks)
+    .innerJoin(protocols, eq(recordedBlocks.protocolPk, protocols.pk))
+    .where(eq(protocols.protocolId, protocolId));
 }
