@@ -1,6 +1,8 @@
 import * as sdk from "@defillama/sdk";
 import { getLatestBlock } from "@defillama/sdk/build/util";
+import { Block } from "@defillama/sdk/build/util/blocks";
 import { Chain } from "@defillama/sdk/build/general";
+import db from "../db/db";
 import adapters from "../adapters";
 import { maxBlocksToQueryByChain } from "./constants";
 import type {
@@ -14,44 +16,22 @@ import { wait } from "./etherscan";
 import { Protocol } from "../data/types";
 import retry from "async-retry";
 import { ErrorLoggerService } from "./bunyan";
-import { insertEntriesFromAdapter, insertRecordedBlockEntries } from "../db/write";
+import { insertEntriesFromAdapter, insertRecordedBlockEntries, insertBlockTimestampEntries } from "../db/write";
 import { getRecordedBlocksByProtocolId } from "../db/read";
 import { InsertOptions } from "../db/types";
 import { withTimeout } from "./async";
+import { getLatestBlockWithLogging } from "./blocks";
 
 export const runAdapterToCurrentBlock = async (
   protocol: Protocol,
   insertOptions: InsertOptions,
-  updateImmutables: boolean = false
+  _updateImmutables: boolean = false
 ) => {
   console.log(`Running adapter for protocol ${protocol.displayName}`);
 
-  await runAdapterSnapshot(protocol, insertOptions, updateImmutables);
+  //await runAdapterSnapshot(protocol, insertOptions, updateImmutables);
   await runTroveOperationsToCurrentBlock(protocol, insertOptions);
 };
-
-async function getLatestBlockWithLogging(
-  chain: string,
-  logger: ErrorLoggerService,
-  id: number,
-  table: string
-): Promise<number> {
-  try {
-    const { number } = await retry(async () => withTimeout(getLatestBlock(chain), { milliseconds: 30000 }), {
-      retries: 2,
-    });
-    return number;
-  } catch (error) {
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      keyword: "missingBlocks",
-      table: table,
-      chain,
-      protocolId: id,
-    });
-    throw error;
-  }
-}
 
 const getBlocksForRunningAdapter = async (
   protocolDbName: string,
@@ -67,7 +47,7 @@ const getBlocksForRunningAdapter = async (
         return await withTimeout(getLatestBlock(chain), { milliseconds: 30000 });
       },
       {
-        retries: 3,
+        retries: 2,
       }
     );
     endBlock = number;
@@ -118,7 +98,7 @@ export const runAdapterSnapshot = async (
   const finalInsertOptions: InsertOptions = {
     allowNullDbValues: false,
     onConflict: "error",
-    retryCount: 2,
+    retryCount: 1,
     retryDelay: 2000,
     ...insertOptions,
   };
@@ -129,7 +109,8 @@ export const runAdapterSnapshot = async (
     await Promise.allSettled(
       Object.entries(fetchTrovesFns).map(async ([chain, fetchTrovesFn]) => {
         try {
-          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "troveData");
+          const block = await getLatestBlockWithLogging(chain, logger, id, "troveData");
+          const { number: blockNumber, timestamp: blockTimestamp } = block;
           let troveDataEntries: TroveDataEntry[] = [];
           await retry(
             async () => {
@@ -149,11 +130,18 @@ export const runAdapterSnapshot = async (
               });
             },
             {
-              retries: 2,
+              retries: 1,
             }
           );
-          // console.dir(troveDataEntries, { depth: null });
-          await insertEntriesFromAdapter("fetchTroves", troveDataEntries, finalInsertOptions);
+          await db.transaction(async (trx) => {
+            await insertEntriesFromAdapter("fetchTroves", troveDataEntries, finalInsertOptions, trx);
+            await insertBlockTimestampEntries(
+              chain,
+              [{ blockNumber, timestamp: blockTimestamp }],
+              finalInsertOptions,
+              trx
+            );
+          });
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
@@ -174,7 +162,8 @@ export const runAdapterSnapshot = async (
     await Promise.allSettled(
       Object.entries(fetchImmutablesFns).map(async ([chain, fetchImmutablesFn]) => {
         try {
-          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "coreImmutables");
+          const block = await getLatestBlockWithLogging(chain, logger, id, "coreImmutables");
+          const { number: blockNumber, timestamp: blockTimestamp } = block;
           let coreImmutablesEntry = {} as CoreImmutablesEntry;
           await retry(
             async () => {
@@ -191,10 +180,18 @@ export const runAdapterSnapshot = async (
               };
             },
             {
-              retries: 2,
+              retries: 1,
             }
           );
-          await insertEntriesFromAdapter("fetchImmutables", [coreImmutablesEntry], finalInsertOptions);
+          await db.transaction(async (trx) => {
+            await insertEntriesFromAdapter("fetchImmutables", [coreImmutablesEntry], finalInsertOptions, trx);
+            await insertBlockTimestampEntries(
+              chain,
+              [{ blockNumber, timestamp: blockTimestamp }],
+              finalInsertOptions,
+              trx
+            );
+          });
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
@@ -215,7 +212,8 @@ export const runAdapterSnapshot = async (
     await Promise.allSettled(
       Object.entries(fetchCorePoolDataFns).map(async ([chain, fetchCorePoolDataFn]) => {
         try {
-          const blockNumber = await getLatestBlockWithLogging(chain, logger, id, "corePoolData");
+          const block = await getLatestBlockWithLogging(chain, logger, id, "corePoolData");
+          const { number: blockNumber, timestamp: blockTimestamp } = block;
           let corePoolDataEntry = {} as CorePoolDataEntry;
           await retry(
             async () => {
@@ -235,10 +233,18 @@ export const runAdapterSnapshot = async (
               };
             },
             {
-              retries: 2,
+              retries: 1,
             }
           );
-          await insertEntriesFromAdapter("fetchCorePoolData", [corePoolDataEntry], finalInsertOptions);
+          await db.transaction(async (trx) => {
+            await insertEntriesFromAdapter("fetchCorePoolData", [corePoolDataEntry], finalInsertOptions, trx);
+            await insertBlockTimestampEntries(
+              chain,
+              [{ blockNumber, timestamp: blockTimestamp }],
+              finalInsertOptions,
+              trx
+            );
+          });
         } catch (error) {
           logger.error({
             error: error instanceof Error ? error.message : String(error),
@@ -264,7 +270,7 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
   const finalInsertOptions: InsertOptions = {
     allowNullDbValues: false,
     onConflict: "error",
-    retryCount: 2,
+    retryCount: 1,
     retryDelay: 2000,
     ...insertOptions,
   };
@@ -482,6 +488,7 @@ export const runTroveOperationsHistorical = async (
   while (block > startBlock) {
     const startBlockForQuery = Math.max(startBlock, block - maxBlocksToQuery);
     try {
+      const blockNumbers = new Set<number>();
       const eventDataEntries = await retry(
         async () => {
           const eventData = await adapterTroveOperationsFn(
@@ -496,6 +503,7 @@ export const runTroveOperationsHistorical = async (
             if (event.getTroveManagerIndex == null) {
               throw new Error(`getTroveManagerIndex not found in event data for ${id} ${protocolDbName}-${chain}`);
             }
+            blockNumbers.add(event.blockNumber);
             return {
               protocolId: id,
               ...event,
@@ -503,7 +511,7 @@ export const runTroveOperationsHistorical = async (
           });
         },
         {
-          retries: 2,
+          retries: 1,
         }
       );
 
@@ -515,7 +523,12 @@ export const runTroveOperationsHistorical = async (
       console.log(
         `${eventDataEntries.length} events were found for ${id} (${protocolDbName}-${chain}) from ${startBlockForQuery} to ${block}.`
       );
-      await insertEntriesFromAdapter("fetchTroveOperations", eventDataEntries, insertOptions);
+      const blockNumberList = Array.from(blockNumbers).map((blockNumber) => ({ blockNumber }));
+      await db.transaction(async (trx) => {
+        await insertEntriesFromAdapter("fetchTroveOperations", eventDataEntries, insertOptions, trx);
+        await insertBlockTimestampEntries(chain, blockNumberList, insertOptions, trx);
+      });
+
       console.log("finished inserting trove operations");
     } catch (e) {
       const errString = `Adapter for ${protocolDbName} failed to get and insert logs for chain ${chain} for blocks ${startBlockForQuery}-${block}. ${e}`;
