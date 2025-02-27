@@ -8,7 +8,7 @@ export const DAY = HOUR * 24;
 
 export function convertToUnixTimestamp(date: Date) {
   return Math.floor(date.getTime() / 1000);
-};
+}
 
 export function toUNIXTimestamp(ms: number) {
   return Math.round(ms / 1000);
@@ -41,11 +41,7 @@ export const getTimestampAtStartOfDayUTC = (timestamp: number) => {
 
 export const getTimestampAtStartOfNextDayUTC = (timestamp: number) => {
   const date = new Date(timestamp * 1000);
-  var date_utc = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate() + 1
-  );
+  var date_utc = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
   return date_utc / 1000;
 };
 
@@ -94,10 +90,7 @@ export function getClosestDayStartTimestamp(timestamp: number) {
   const prevDayTimestamp = toUNIXTimestamp(dt.getTime());
   dt.setUTCHours(24);
   const nextDayTimestamp = toUNIXTimestamp(dt.getTime());
-  if (
-    Math.abs(prevDayTimestamp - timestamp) <
-    Math.abs(nextDayTimestamp - timestamp)
-  ) {
+  if (Math.abs(prevDayTimestamp - timestamp) < Math.abs(nextDayTimestamp - timestamp)) {
     return prevDayTimestamp;
   } else {
     return nextDayTimestamp;
@@ -110,7 +103,5 @@ function pad(s: number) {
 
 export function formatTimestampAsDate(timestamp: string) {
   const date = new Date(Number(timestamp) * 1000);
-  return `${pad(date.getDate())}/${pad(
-    date.getMonth() + 1
-  )}/${date.getFullYear()}`;
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
