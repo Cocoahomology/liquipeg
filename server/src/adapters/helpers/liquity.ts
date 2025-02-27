@@ -136,7 +136,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
     const addressesRegistryList = (
       await Promise.all(
         troveManagersList.map(async (troveManager, index) => {
-          const retryCount = 3;
+          const retryCount = 2;
           for (let i = 0; i < retryCount; i++) {
             try {
               const creationData = await getContractCreationDataEtherscan(api.chain, troveManager);

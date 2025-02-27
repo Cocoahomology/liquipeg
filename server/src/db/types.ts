@@ -8,6 +8,6 @@ export type InsertOptions = {
 export const DEFAULT_INSERT_OPTIONS: InsertOptions = {
   allowNullDbValues: false,
   onConflict: "error",
-  retryCount: 3,
+  retryCount: 2,
   retryDelay: 2000,
 };

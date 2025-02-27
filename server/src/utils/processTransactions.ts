@@ -71,7 +71,7 @@ export const getEvmEventLogs = async (
           }
         },
         {
-          retries: 5,
+          retries: 4,
           maxTimeout: 10000,
         }
       );
