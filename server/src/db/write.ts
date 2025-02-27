@@ -10,6 +10,7 @@ import {
   RecordedBlocksEntryWithChain,
 } from "../utils/types";
 import { eq, and, sql } from "drizzle-orm";
+import { PgTransaction } from "drizzle-orm/pg-core";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 import retry from "async-retry";
 import protocolData from "../data/protocolData";
@@ -17,21 +18,26 @@ import { PromisePool } from "@supercharge/promise-pool";
 
 // FIX: types throughout this file
 
-export async function insertEntriesFromAdapter(adapterFn: keyof Adapter, data: object[], options: InsertOptions = {}) {
+export async function insertEntriesFromAdapter(
+  adapterFn: keyof Adapter,
+  data: object[],
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
+) {
   if (data.length === 0) return;
   const mergedOptions = { ...DEFAULT_INSERT_OPTIONS, ...options };
   switch (adapterFn) {
     case "fetchTroves":
-      await insertEntries(data as TroveDataEntry[], mergedOptions, insertTroveData, "troveData");
+      await insertEntries(data as TroveDataEntry[], mergedOptions, insertTroveData, "troveData", trx);
       break;
     case "fetchCorePoolData":
-      await insertEntries(data as CorePoolDataEntry[], mergedOptions, insertCorePoolData, "corePoolData");
+      await insertEntries(data as CorePoolDataEntry[], mergedOptions, insertCorePoolData, "corePoolData", trx);
       break;
     case "fetchImmutables":
-      await insertEntries(data as CoreImmutablesEntry[], mergedOptions, insertCoreImmutables, "coreImmutables");
+      await insertEntries(data as CoreImmutablesEntry[], mergedOptions, insertCoreImmutables, "coreImmutables", trx);
       break;
     case "fetchTroveOperations":
-      await insertEntries(data as EventDataEntry[], mergedOptions, insertEventData, "eventData");
+      await insertEntries(data as EventDataEntry[], mergedOptions, insertEventData, "eventData", trx);
       break;
   }
 }
@@ -89,11 +95,12 @@ async function insertEntries(
     onConflict: "error" | "ignore",
     blockNumber?: number
   ) => Promise<void>,
-  tableName: string
+  tableName: string,
+  trx?: PgTransaction<any, any, any>
 ) {
   const {
     allowNullDbValues = DEFAULT_INSERT_OPTIONS.allowNullDbValues ?? false,
-    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 3,
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
     retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
     onConflict = DEFAULT_INSERT_OPTIONS.onConflict ?? "error",
   } = options;
@@ -101,10 +108,6 @@ async function insertEntries(
   const logger = ErrorLoggerService.getInstance();
   if (!data.length) {
     return;
-  }
-
-  if (retryCount < 1) {
-    throw new Error("retryCount must be at least 1");
   }
 
   const protocolsTable = getTable("protocols");
@@ -157,7 +160,7 @@ async function insertEntries(
     }
   };
 
-  await db.transaction(async (trx) => {
+  const executeInserts = async (transaction: any) => {
     await PromisePool.for(data)
       .withConcurrency(20)
       .withTaskTimeout(30000)
@@ -170,7 +173,7 @@ async function insertEntries(
 
           await retry(
             async () => {
-              await insertFn(trx, entry, protocolPk!, onConflict, blockNumber);
+              await insertFn(transaction, entry, protocolPk!, onConflict, blockNumber);
             },
             {
               retries: retryCount,
@@ -184,7 +187,15 @@ async function insertEntries(
           } else throw error;
         }
       });
-  });
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
+    });
+  }
 }
 
 async function insertTroveData(
@@ -317,10 +328,11 @@ async function insertEventData(
 
 export async function insertRecordedBlockEntries(
   recordedBlocksList: RecordedBlocksEntryWithChain[],
-  options: InsertOptions = {}
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
 ) {
   const {
-    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 3,
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
     retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
   } = options;
 
@@ -353,14 +365,15 @@ export async function insertRecordedBlockEntries(
     if (!hasLoggedError) {
       logger.error({
         error: error.message,
-        keyword: "critical",
+        keyword: "missingBlocks",
         table: "recordedBlocks",
         chain,
       });
       hasLoggedError = true;
     }
   };
-  await db.transaction(async (trx) => {
+
+  const executeInserts = async (transaction: any) => {
     await PromisePool.for(recordedBlocksList)
       .withConcurrency(20)
       .withTaskTimeout(30000)
@@ -370,7 +383,20 @@ export async function insertRecordedBlockEntries(
           const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
           await retry(
             async () => {
-              await upsertRecordedBlocks(trx, protocolPk!, startBlock, endBlock);
+              await transaction
+                .insert(recordedBlocks)
+                .values({
+                  protocolPk: protocolPk!,
+                  startBlock,
+                  endBlock,
+                })
+                .onConflictDoUpdate({
+                  target: recordedBlocks.protocolPk,
+                  set: {
+                    startBlock: sql`LEAST(${startBlock}, recorded_blocks.start_block)`,
+                    endBlock: sql`GREATEST(${endBlock}, recorded_blocks.end_block)`,
+                  },
+                });
             },
             {
               retries: retryCount,
@@ -384,22 +410,113 @@ export async function insertRecordedBlockEntries(
           } else throw error;
         }
       });
-  });
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
+    });
+  }
 }
 
-async function upsertRecordedBlocks(db: any, protocolPk: number, startBlock: number, endBlock: number) {
-  await db
-    .insert(recordedBlocks)
-    .values({
-      protocolPk,
-      startBlock,
-      endBlock,
-    })
-    .onConflictDoUpdate({
-      target: recordedBlocks.protocolPk,
-      set: {
-        startBlock: sql`LEAST(${startBlock}, recorded_blocks.start_block)`,
-        endBlock: sql`GREATEST(${endBlock}, recorded_blocks.end_block)`,
-      },
+export async function insertBlockTimestampEntries(
+  chain: string,
+  blockTimestamps: { blockNumber: number; timestamp?: number }[],
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
+) {
+  if (!blockTimestamps.length) return;
+
+  const uniqueBlockTimestamps = Array.from(
+    blockTimestamps
+      .reduce((map, entry) => {
+        const existing = map.get(entry.blockNumber);
+        if (!existing || (!existing.timestamp && entry.timestamp)) {
+          map.set(entry.blockNumber, entry);
+        }
+        return map;
+      }, new Map<number, { blockNumber: number; timestamp?: number }>())
+      .values()
+  );
+
+  const {
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
+    retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
+  } = options;
+
+  const logger = ErrorLoggerService.getInstance();
+  const blockTimestampsTable = getTable("blockTimestamps");
+
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "missingBlocks",
+        table: "blockTimestamps",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const executeInserts = async (transaction: any) => {
+    await PromisePool.for(uniqueBlockTimestamps)
+      .withConcurrency(20)
+      .withTaskTimeout(30000)
+      .process(async (entry) => {
+        try {
+          await retry(
+            async () => {
+              if (!entry.timestamp) {
+                await transaction
+                  .insert(blockTimestampsTable)
+                  .values({
+                    chain,
+                    blockNumber: entry.blockNumber,
+                    timestamp: null,
+                    timestampMissing: true,
+                  })
+                  .onConflictDoNothing();
+              } else {
+                await transaction
+                  .insert(blockTimestampsTable)
+                  .values({
+                    chain,
+                    blockNumber: entry.blockNumber,
+                    timestamp: entry.timestamp,
+                    timestampMissing: false,
+                  })
+                  .onConflictDoUpdate({
+                    target: [blockTimestampsTable.chain, blockTimestampsTable.blockNumber],
+                    set: {
+                      timestamp: entry.timestamp,
+                      timestampMissing: false,
+                    },
+                  });
+              }
+            },
+            {
+              retries: retryCount,
+              minTimeout: retryDelay,
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error) {
+            logFirstError(error, chain);
+            throw error;
+          } else throw error;
+        }
+      });
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
     });
+  }
 }

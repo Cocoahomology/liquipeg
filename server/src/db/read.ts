@@ -1,4 +1,6 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql, gte, lte } from "drizzle-orm";
+import { blockTimestamps } from "../db/schema";
+import { ChainApi } from "@defillama/sdk";
 import { CoreImmutables, TroveDataEntry, CorePoolDataEntry, RecordedBlocksEntryWithChain } from "../utils/types";
 import {
   protocols,
@@ -244,4 +246,57 @@ export async function getRecordedBlocksByProtocolId(protocolId: number): Promise
     .from(recordedBlocks)
     .innerJoin(protocols, eq(recordedBlocks.protocolPk, protocols.pk))
     .where(eq(protocols.protocolId, protocolId));
+}
+
+export async function getTroveManagerCollateralDetails(protocolId: number, chain: string) {
+  const protocol = await getProtocol(protocolId, chain);
+  if (!protocol) return [];
+
+  const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+  const results = await Promise.all(
+    troveMgrs.map(async (tm) => {
+      const colImmutable = await db.query.coreColImmutables.findFirst({
+        where: eq(coreColImmutables.troveManagerPk, tm.pk),
+        orderBy: [desc(coreColImmutables.blockNumber)],
+      });
+
+      if (!colImmutable) return null;
+
+      return {
+        troveManagerIndex: tm.troveManagerIndex,
+        collToken: colImmutable.collToken,
+        priceFeed: colImmutable.priceFeed,
+      };
+    })
+  );
+
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
+}
+
+export async function getBlocksWithMissingTimestamps(): Promise<
+  Record<
+    string,
+    {
+      pk: number;
+      blockNumber: number;
+      timestamp: number | null;
+      timestampMissing: boolean;
+      chain: string;
+    }[]
+  >
+> {
+  const blocks = await db
+    .select()
+    .from(blockTimestamps)
+    .where(eq(blockTimestamps.timestampMissing, true))
+    .orderBy(asc(blockTimestamps.blockNumber));
+
+  // Group blocks by chain
+  return blocks.reduce((acc, block) => {
+    if (!acc[block.chain]) {
+      acc[block.chain] = [];
+    }
+    acc[block.chain].push(block);
+    return acc;
+  }, {} as Record<string, (typeof blockTimestamps.$inferSelect)[]>);
 }

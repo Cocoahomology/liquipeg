@@ -206,6 +206,27 @@ export const recordedBlocks = table(
   (recordedBlocks) => [d.unique("recorded_blocks_protocol_pk_unique").on(recordedBlocks.protocolPk)]
 );
 
+export const blockTimestamps = table(
+  "block_timestamps",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    chain: d.varchar({ length: 32 }).notNull(),
+    blockNumber: d.integer().notNull(),
+    timestamp: d.integer(),
+    timestampMissing: d.boolean().notNull().default(true),
+  },
+  (blockTimestamps) => [
+    d
+      .uniqueIndex("block_timestamps_chain_block_number_unique_idx")
+      .on(blockTimestamps.chain, blockTimestamps.blockNumber),
+    d.index("block_timestamps_missing_idx").on(blockTimestamps.timestampMissing),
+    d.check(
+      "block_timestamps_timestamp_missing_check",
+      sql`NOT (${blockTimestamps.timestamp} IS NOT NULL AND ${blockTimestamps.timestampMissing} = true)`
+    ),
+  ]
+);
+
 export const protocolsRelations = relations(protocols, ({ one }) => ({
   troveManagers: one(troveManagers, {
     fields: [protocols.pk],
@@ -285,16 +306,17 @@ export const colPoolDataRelations = relations(colPoolData, ({ one }) => ({
 }));
 
 const tables = {
-  protocols: protocols,
-  troveManagers: troveManagers,
-  troveData: troveData,
-  eventData: eventData,
-  coreImmutables: coreImmutables,
-  coreColImmutables: coreColImmutables,
-  corePoolData: corePoolData,
-  colPoolData: colPoolData,
-  errorLogs: errorLogs,
-  recordedBlocks: recordedBlocks,
+  protocols,
+  troveManagers,
+  troveData,
+  eventData,
+  coreImmutables,
+  coreColImmutables,
+  corePoolData,
+  colPoolData,
+  errorLogs,
+  recordedBlocks,
+  blockTimestamps,
 };
 
 export type TableName =
@@ -307,7 +329,8 @@ export type TableName =
   | "corePoolData"
   | "colPoolData"
   | "errorLogs"
-  | "recordedBlocks";
+  | "recordedBlocks"
+  | "blockTimestamps";
 
 export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];
