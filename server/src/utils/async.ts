@@ -44,13 +44,14 @@ type TimeoutOptions = {
 };
 
 export async function withTimeout<T>(promise: Promise<T>, options: TimeoutOptions): Promise<T> {
-  const { setTimeout } = await import("timers/promises");
-  const timeoutError = new Error(options.message || `Operation timed out after ${options.milliseconds}ms`);
+  let timer: NodeJS.Timeout;
 
   return Promise.race([
     promise,
-    setTimeout(options.milliseconds).then(() => {
-      throw timeoutError;
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`Operation timed out after ${options.milliseconds}ms`));
+      }, options.milliseconds);
     }),
-  ]);
+  ]).finally(() => clearTimeout(timer));
 }
