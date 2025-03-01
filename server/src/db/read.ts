@@ -61,20 +61,10 @@ export async function getLatestCoreImmutables(
 
       if (!colImmutable) return null;
 
+      const { pk, troveManagerPk, blockNumber, ...colImmutableData } = colImmutable;
       return {
         getTroveManagerIndex: tm.troveManagerIndex,
-        CCR: colImmutable.CCR,
-        SCR: colImmutable.SCR,
-        MCR: colImmutable.MCR,
-        troveManager: colImmutable.troveManager,
-        collToken: colImmutable.collToken,
-        activePool: colImmutable.activePool,
-        defaultPool: colImmutable.defaultPool,
-        stabilityPool: colImmutable.stabilityPool,
-        borrowerOperationsAddress: colImmutable.borrowerOperationsAddress,
-        sortedTroves: colImmutable.sortedTroves,
-        troveNFT: colImmutable.troveNFT,
-        priceFeed: colImmutable.priceFeed,
+        ...colImmutableData,
       };
     })
   );
