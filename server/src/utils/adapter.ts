@@ -25,11 +25,11 @@ import { getLatestBlockWithLogging } from "./blocks";
 export const runAdapterToCurrentBlock = async (
   protocol: Protocol,
   insertOptions: InsertOptions,
-  _updateImmutables: boolean = false
+  updateImmutables: boolean = false
 ) => {
   console.log(`Running adapter for protocol ${protocol.displayName}`);
 
-  //await runAdapterSnapshot(protocol, insertOptions, updateImmutables);
+  await runAdapterSnapshot(protocol, insertOptions, updateImmutables);
   await runTroveOperationsToCurrentBlock(protocol, insertOptions);
 };
 
@@ -78,7 +78,7 @@ const importAdapter = async (protocolDbName: string, id: number, logger: ErrorLo
   const adapter = adapters[protocolDbName];
   if (!adapter) {
     const errString = `Adapter for ${protocolDbName} not found, check it is exported correctly.`;
-    logger.error({ error: errString, keyword: "critical", protocolId: id });
+    logger.error({ error: errString, keyword: "critical", protocolId: id, function: "importAdapter" });
     throw new Error(errString);
   }
   return adapter;
@@ -149,6 +149,7 @@ export const runAdapterSnapshot = async (
             table: "troveData",
             chain: chain,
             protocolId: id,
+            function: "runAdapterSnapshot",
           });
           console.error(`Fetching troves for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
@@ -199,6 +200,7 @@ export const runAdapterSnapshot = async (
             table: "coreImmutables",
             chain: chain,
             protocolId: id,
+            function: "runAdapterSnapshot",
           });
           console.error(`Fetching immutables for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
@@ -252,6 +254,7 @@ export const runAdapterSnapshot = async (
             table: "corePoolData",
             chain: chain,
             protocolId: id,
+            function: "runAdapterSnapshot",
           });
           console.error(`Fetching Core pool data for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
@@ -298,7 +301,13 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
         const { startBlock, endBlock } = await getBlocksForRunningAdapter(protocolDbName, chain, recordedBlocksEntry);
         if (startBlock == null) {
           const errString = `Unable to get blocks for ${protocolDbName} adapter on chain ${chain}.`;
-          logger.error({ error: errString, keyword: "missingBlocks", protocolId: id, chain: chain });
+          logger.error({
+            error: errString,
+            keyword: "missingBlocks",
+            protocolId: id,
+            chain: chain,
+            function: "runTroveOperationsToCurrentBlock",
+          });
           throw new Error(errString);
         }
         await runTroveOperationsHistorical(startBlock, endBlock, protocol, chain as Chain, finalInsertOptions, true);
@@ -310,7 +319,13 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
         });
       } catch (e) {
         const errString = `Trove operations for ${protocolDbName} on chain ${chain} failed, skipped, ${e}`;
-        logger.error({ error: errString, keyword: "missingValues", protocolId: id, chain: chain });
+        logger.error({
+          error: errString,
+          keyword: "missingValues",
+          protocolId: id,
+          chain: chain,
+          function: "runTroveOperationsToCurrentBlock",
+        });
         console.error(errString);
         return null;
       }
@@ -474,7 +489,7 @@ export const runTroveOperationsHistorical = async (
   const adapterTroveOperationsFn = adapter.fetchTroveOperations?.[chain];
   if (!adapterTroveOperationsFn) {
     const errString = `Chain ${chain} not found on adapter ${protocolDbName}.`;
-    logger.error({ error: errString, keyword: "critical", protocolId: id });
+    logger.error({ error: errString, keyword: "critical", protocolId: id, function: "runTroveOperationsHistorical" });
     throw new Error(errString);
   }
 
