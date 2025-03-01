@@ -178,6 +178,9 @@ async function insertEntries(
             {
               retries: retryCount,
               minTimeout: retryDelay,
+              onRetry: (error) => {
+                logFirstError(error as Error, chain);
+              },
             }
           );
         } catch (error) {
@@ -206,18 +209,40 @@ async function insertTroveData(
   blockNumber?: number
 ) {
   const troveDataTable = getTable("troveData");
+  const logger = ErrorLoggerService.getInstance();
+  let hasLoggedError = false;
 
-  const { getTroveManagerIndex, troveData } = troveDataEntry;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "troveData",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
 
-  const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+  const { getTroveManagerIndex, troveData, chain } = troveDataEntry;
 
-  if (onConflict === "ignore") {
-    await trx
-      .insert(troveDataTable)
-      .values(troveData.map((row) => ({ ...row, troveManagerPk, blockNumber })))
-      .onConflictDoNothing();
-  } else {
-    await trx.insert(troveDataTable).values(troveData.map((row) => ({ ...row, troveManagerPk, blockNumber })));
+  try {
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+
+    if (onConflict === "ignore") {
+      await trx
+        .insert(troveDataTable)
+        .values(troveData.map((row) => ({ ...row, troveManagerPk, blockNumber })))
+        .onConflictDoNothing();
+    } else {
+      await trx.insert(troveDataTable).values(troveData.map((row) => ({ ...row, troveManagerPk, blockNumber })));
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      logFirstError(error, chain);
+      throw error;
+    }
+    throw error;
   }
 }
 
@@ -230,8 +255,22 @@ async function insertCoreImmutables(
 ) {
   const coreImmutablesTable = getTable("coreImmutables");
   const coreColImmutablesTable = getTable("coreColImmutables");
+  const logger = ErrorLoggerService.getInstance();
+  let hasLoggedError = false;
 
-  const { boldToken, collateralRegistry, interestRouter, coreCollateralImmutables } = immutablesData;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "coreImmutables",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const { boldToken, collateralRegistry, interestRouter, coreCollateralImmutables, chain } = immutablesData;
 
   const coreImmutablesEntry = {
     protocolPk: protocolPk,
@@ -241,24 +280,40 @@ async function insertCoreImmutables(
     interestRouter: interestRouter,
   };
 
-  await trx.insert(coreImmutablesTable).values(coreImmutablesEntry);
+  try {
+    await trx.insert(coreImmutablesTable).values(coreImmutablesEntry);
 
-  await PromisePool.for(coreCollateralImmutables).process(async (coreColImmutables) => {
-    const { getTroveManagerIndex } = coreColImmutables;
+    await PromisePool.for(coreCollateralImmutables).process(async (coreColImmutables) => {
+      try {
+        const { getTroveManagerIndex } = coreColImmutables;
 
-    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
 
-    const colPoolDataEntry = {
-      troveManagerPk,
-      blockNumber,
-      ...coreColImmutables,
-    };
-    if (onConflict === "ignore") {
-      await trx.insert(coreColImmutablesTable).values(colPoolDataEntry).onConflictDoNothing();
-    } else {
-      await trx.insert(coreColImmutablesTable).values(colPoolDataEntry);
+        const colPoolDataEntry = {
+          troveManagerPk,
+          blockNumber,
+          ...coreColImmutables,
+        };
+        if (onConflict === "ignore") {
+          await trx.insert(coreColImmutablesTable).values(colPoolDataEntry).onConflictDoNothing();
+        } else {
+          await trx.insert(coreColImmutablesTable).values(colPoolDataEntry);
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          logFirstError(error, chain);
+          throw error;
+        }
+        throw error;
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      logFirstError(error, chain);
+      throw error;
     }
-  });
+    throw error;
+  }
 }
 
 async function insertCorePoolData(
@@ -270,35 +325,64 @@ async function insertCorePoolData(
 ) {
   const corePoolDataTable = getTable("corePoolData");
   const colPoolDataTable = getTable("colPoolData");
+  const logger = ErrorLoggerService.getInstance();
+  let hasLoggedError = false;
 
-  const { baseRate, getRedemptionRate, totalCollaterals, collateralPoolData } = poolData;
-
-  const corePoolDataEntry = {
-    protocolPk: protocolPk,
-    blockNumber: blockNumber,
-    baseRate: baseRate,
-    getRedemptionRate: getRedemptionRate,
-    totalCollaterals: totalCollaterals,
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "corePoolData",
+        chain,
+      });
+      hasLoggedError = true;
+    }
   };
 
-  await trx.insert(corePoolDataTable).values(corePoolDataEntry);
+  const { baseRate, getRedemptionRate, totalCollaterals, collateralPoolData, chain } = poolData;
 
-  await PromisePool.for(collateralPoolData).process(async (colPoolData) => {
-    const { getTroveManagerIndex } = colPoolData;
-
-    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
-
-    const colPoolDataEntry = {
-      troveManagerPk,
-      blockNumber,
-      ...colPoolData,
+  try {
+    const corePoolDataEntry = {
+      protocolPk: protocolPk,
+      blockNumber: blockNumber,
+      baseRate: baseRate,
+      getRedemptionRate: getRedemptionRate,
+      totalCollaterals: totalCollaterals,
     };
-    if (onConflict === "ignore") {
-      await trx.insert(colPoolDataTable).values(colPoolDataEntry).onConflictDoNothing();
-    } else {
-      await trx.insert(colPoolDataTable).values(colPoolDataEntry);
+
+    await trx.insert(corePoolDataTable).values(corePoolDataEntry);
+
+    await PromisePool.for(collateralPoolData).process(async (colPoolData) => {
+      try {
+        const { getTroveManagerIndex } = colPoolData;
+        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+
+        const colPoolDataEntry = {
+          troveManagerPk,
+          blockNumber,
+          ...colPoolData,
+        };
+        if (onConflict === "ignore") {
+          await trx.insert(colPoolDataTable).values(colPoolDataEntry).onConflictDoNothing();
+        } else {
+          await trx.insert(colPoolDataTable).values(colPoolDataEntry);
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          logFirstError(error, chain);
+          throw error;
+        }
+        throw error;
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      logFirstError(error, chain);
+      throw error;
     }
-  });
+    throw error;
+  }
 }
 
 async function insertEventData(
@@ -308,21 +392,43 @@ async function insertEventData(
   onConflict: "error" | "ignore"
 ) {
   const eventDataTable = getTable("eventData");
+  const logger = ErrorLoggerService.getInstance();
+  let hasLoggedError = false;
+
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "eventData",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
 
   const { getTroveManagerIndex, protocolId, chain, ...remainingEventData } = eventData;
 
-  const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+  try {
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
 
-  const eventDataEntry = {
-    troveManagerPk: troveManagerPk,
-    getTroveManagerIndex: getTroveManagerIndex,
-    ...remainingEventData,
-  };
+    const eventDataEntry = {
+      troveManagerPk: troveManagerPk,
+      getTroveManagerIndex: getTroveManagerIndex,
+      ...remainingEventData,
+    };
 
-  if (onConflict === "ignore") {
-    await trx.insert(eventDataTable).values(eventDataEntry).onConflictDoNothing();
-  } else {
-    await trx.insert(eventDataTable).values(eventDataEntry);
+    if (onConflict === "ignore") {
+      await trx.insert(eventDataTable).values(eventDataEntry).onConflictDoNothing();
+    } else {
+      await trx.insert(eventDataTable).values(eventDataEntry);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      logFirstError(error, chain);
+      throw error;
+    }
+    throw error;
   }
 }
 
@@ -401,6 +507,9 @@ export async function insertRecordedBlockEntries(
             {
               retries: retryCount,
               minTimeout: retryDelay,
+              onRetry: (error) => {
+                logFirstError(error as Error, chain);
+              },
             }
           );
         } catch (error) {
@@ -501,6 +610,9 @@ export async function insertBlockTimestampEntries(
             {
               retries: retryCount,
               minTimeout: retryDelay,
+              onRetry: (error) => {
+                logFirstError(error as Error, chain);
+              },
             }
           );
         } catch (error) {
