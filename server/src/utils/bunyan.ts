@@ -67,14 +67,19 @@ export class ErrorLoggerService {
     keyword: "timeout" | "missingValues" | "critical" | "missingBlocks";
     table?: string;
     chain?: string;
+    function?: string;
     protocolId?: number;
   }): void {
     if (!this.logger) {
       this.initLogger();
     }
 
+    // Get the caller's name using Error.stack
+    const stack = new Error().stack;
+    const caller = stack?.split("\n")[2]?.trim()?.split(" ")[1] || "unknown";
+
     new Promise<void>((resolve) => {
-      this.logger!.error(params, (err: Error | undefined) => {
+      this.logger!.error({ ...params, function: params.function || caller }, (err: Error | undefined) => {
         if (err) {
           console.error("Error writing to log:", err);
         }
