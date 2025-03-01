@@ -78,7 +78,12 @@ export type CoreColImmutables = {
   borrowerOperationsAddress: string;
   sortedTroves: string;
   troveNFT: string;
-  priceFeed: string;
+  priceFeed: string | null;
+  isLST: boolean | null;
+  rateProviderAddress: string | null;
+  LSTunderlying: string | null;
+  deviationThreshold: string | null;
+  oracleType: "chainlink" | "custom" | null;
 };
 
 export type CorePoolDataEntry = {

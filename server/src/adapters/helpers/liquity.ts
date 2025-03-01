@@ -5,6 +5,7 @@ import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManag
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
 import { getLatestCoreImmutables } from "../../db/read";
 import { PromisePool } from "@supercharge/promise-pool";
+import { getCollateralConfig } from "./collateralConfig";
 
 const abi = {
   Troves:
@@ -117,7 +118,6 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
       abi: "address:boldToken",
       target: colRegistryAddress,
     })) as string;
-
     const troveManagersList = (await api.fetchList({
       lengthAbi: "totalCollaterals",
       itemAbi: "getTroveManager",
@@ -134,29 +134,30 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
     let coreCollateralImmutablesList = [] as CoreColImmutables[];
 
     const addressesRegistryList = (
-      await Promise.all(
+      await Promise.allSettled(
         troveManagersList.map(async (troveManager, index) => {
-          const retryCount = 2;
-          for (let i = 0; i < retryCount; i++) {
-            try {
-              const creationData = await getContractCreationDataEtherscan(api.chain, troveManager);
-              const creationBytecode = creationData.creationBytecode;
-              if (!creationBytecode) {
-                throw new Error(`No creation bytecode returned for trove manager ${troveManager}.`);
-              }
-
-              const addressesRegistry = "0x" + creationBytecode.slice(-40);
-              return { address: addressesRegistry, index };
-            } catch (error) {
-              if (i === retryCount - 1) {
-                missingAddressesRegistryIndexes.push(index);
-                return null;
-              }
+          try {
+            const creationData = await getContractCreationDataEtherscan(api.chain, troveManager, 2);
+            const creationBytecode = creationData.creationBytecode;
+            if (!creationBytecode) {
+              throw new Error(`No creation bytecode returned for trove manager ${troveManager}.`);
             }
+            const addressesRegistry = "0x" + creationBytecode.slice(-40);
+            return { address: addressesRegistry, index };
+          } catch (error) {
+            missingAddressesRegistryIndexes.push(index);
+            console.error(error);
+            return null;
           }
         })
       )
-    ).filter((item): item is { address: string; index: number } => item !== null);
+    )
+      .filter(
+        (result): result is PromiseFulfilledResult<{ address: string; index: number } | null> =>
+          result.status === "fulfilled"
+      )
+      .map((result) => result.value)
+      .filter((item): item is { address: string; index: number } => item !== null);
 
     const [
       defaultPoolsList,
@@ -195,7 +196,21 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
 
     accInterestRouterList = [...interestRouterList];
 
+    const rateProviderAddressList = await Promise.all(
+      priceFeedList.map(async (priceFeed) => {
+        try {
+          return await api.call({
+            abi: "address:rateProviderAddress",
+            target: priceFeed,
+          });
+        } catch {
+          return null;
+        }
+      })
+    );
+
     addressesRegistryList.forEach((item, idx) => {
+      const collateralConfig = getCollateralConfig(`${colRegistryAddress}-${api.chain}`, item.index);
       coreCollateralImmutablesList.push({
         getTroveManagerIndex: item.index,
         CCR: CCRList[idx],
@@ -210,6 +225,11 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
         sortedTroves: sortedTrovesList[idx],
         troveNFT: troveNFTList[idx],
         priceFeed: priceFeedList[idx],
+        isLST: rateProviderAddressList[idx] !== null,
+        rateProviderAddress: rateProviderAddressList[idx],
+        LSTunderlying: collateralConfig.LSTunderlying,
+        deviationThreshold: collateralConfig.deviationThreshold,
+        oracleType: collateralConfig.oracleType,
       });
     });
 
@@ -218,8 +238,9 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
         console.error(
           `Addresses registry for trove manager ${troveManagersList[index]} failed to fetch, using alternative calls.`
         );
-        console.error(`Price feed for trove manager ${troveManagersList[index]} not found, setting it to empty.`);
-        const priceFeed = "";
+        console.error(
+          `Price feed for trove manager ${troveManagersList[index]} not found, setting it and all related values to null.`
+        );
         const troveManager = troveManagersList[index];
         const activePool = activePoolsList[index];
         const borrowerOperationsAddress = (await api.call({
@@ -252,7 +273,12 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
           borrowerOperationsAddress: borrowerOperationsAddress,
           sortedTroves: sortedTroves,
           troveNFT: troveNFT,
-          priceFeed: priceFeed,
+          priceFeed: null,
+          isLST: null,
+          rateProviderAddress: null,
+          LSTunderlying: null,
+          deviationThreshold: null,
+          oracleType: null,
         });
       })
     );
@@ -284,7 +310,7 @@ export function getCorePoolDataById(projectId: string) {
       console.error(
         `project Id ${projectId} immutables has ${
           Object.keys(immutableData.coreCollateralImmutables).length
-        } collaterals stored when current number is ${totalCollaterals}. Only fetching pool data for first ${totalCollaterals} collaterals.`
+        } collaterals stored when current number should be ${totalCollaterals}. Attempting to fetch pool data for first ${totalCollaterals} collaterals.`
       );
     }
 
