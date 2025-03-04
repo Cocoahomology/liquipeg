@@ -125,10 +125,8 @@ export const coreColImmutables = table(
     troveNFT: d.varchar({ length: 42 }).notNull(),
     priceFeed: d.varchar({ length: 42 }),
     isLST: d.boolean(),
-    rateProviderAddress: d.varchar({ length: 42 }),
     LSTunderlying: d.varchar({ length: 42 }),
-    deviationThreshold: d.varchar({ length: 96 }),
-    oracleType: d.varchar({ length: 32 }).$type<"chainlink" | "custom">(),
+    collAlternativeChainAddresses: d.jsonb(),
   },
   (coreColImmutables) => [
     d

@@ -61,9 +61,10 @@ export async function getLatestCoreImmutables(
 
       if (!colImmutable) return null;
 
-      const { pk, troveManagerPk, blockNumber, ...colImmutableData } = colImmutable;
+      const { pk, troveManagerPk, blockNumber, collAlternativeChainAddresses, ...colImmutableData } = colImmutable;
       return {
         getTroveManagerIndex: tm.troveManagerIndex,
+        collAlternativeChainAddresses: collAlternativeChainAddresses as { [chain: string]: string[] } | null,
         ...colImmutableData,
       };
     })
