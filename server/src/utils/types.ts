@@ -80,10 +80,8 @@ export type CoreColImmutables = {
   troveNFT: string;
   priceFeed: string | null;
   isLST: boolean | null;
-  rateProviderAddress: string | null;
   LSTunderlying: string | null;
-  deviationThreshold: string | null;
-  oracleType: "chainlink" | "custom" | null;
+  collAlternativeChainAddresses: { [chain: string]: string[] } | null;
 };
 
 export type CorePoolDataEntry = {
@@ -125,4 +123,28 @@ export type RecordedBlocksEntryWithChain = {
   chain: string;
   startBlock: number;
   endBlock: number;
+};
+
+export type CollateralPricesAndRatesEntry = {
+  blockNumber?: number;
+  chain: string;
+  collToken: string;
+  colUSDPriceFeed: string;
+  colUSDOracle: string;
+  LSTUnderlyingCanonicalRate: string;
+  LSTUnderlyingMarketRate: string;
+  UnderlyingUSDOracle: string;
+  deviation: string;
+  colUSDOnchainEstimatedPrice: string;
+};
+
+export type CollateralPricesAndRates = {
+  collToken: string;
+  colUSDPriceFeed: string;
+  colUSDOracle: string;
+  LSTUnderlyingCanonicalRate: string;
+  LSTUnderlyingMarketRate: string;
+  underlyingUSDOracle: string;
+  deviation: string;
+  colUSDOnchainEstimatedPrice: string;
 };
