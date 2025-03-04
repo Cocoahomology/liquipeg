@@ -1,11 +1,11 @@
-import { ChainApi } from "@defillama/sdk";
+import { type ChainApi } from "@defillama/sdk";
 import { EventData, CoreColImmutables, ColPoolData } from "../../utils/types";
 import { getEvmEventLogs } from "../../utils/processTransactions";
 import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManagerAbi.json";
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
 import { getLatestCoreImmutables } from "../../db/read";
 import { PromisePool } from "@supercharge/promise-pool";
-import { getCollateralConfig } from "./collateralConfig";
+import { getCollateralConfig } from "../../collateralConfig";
 
 const abi = {
   Troves:
@@ -112,7 +112,7 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
   };
 }
 
-export function getImmutablesByColRegistry(colRegistryAddress: string) {
+export function getImmutablesByColRegistry(colRegistryAddress: string, protocolId: number) {
   return async (api: ChainApi) => {
     const boldToken = (await api.call({
       abi: "address:boldToken",
@@ -143,7 +143,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
               throw new Error(`No creation bytecode returned for trove manager ${troveManager}.`);
             }
             const addressesRegistry = "0x" + creationBytecode.slice(-40);
-            return { address: addressesRegistry, index };
+            return { address: addressesRegistry, troveManagerIndex: index };
           } catch (error) {
             missingAddressesRegistryIndexes.push(index);
             console.error(error);
@@ -153,11 +153,11 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
       )
     )
       .filter(
-        (result): result is PromiseFulfilledResult<{ address: string; index: number } | null> =>
+        (result): result is PromiseFulfilledResult<{ address: string; troveManagerIndex: number } | null> =>
           result.status === "fulfilled"
       )
       .map((result) => result.value)
-      .filter((item): item is { address: string; index: number } => item !== null);
+      .filter((item): item is { address: string; troveManagerIndex: number } => item !== null);
 
     const [
       defaultPoolsList,
@@ -196,53 +196,42 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
 
     accInterestRouterList = [...interestRouterList];
 
-    const rateProviderAddressList = await Promise.all(
-      priceFeedList.map(async (priceFeed) => {
-        try {
-          return await api.call({
-            abi: "address:rateProviderAddress",
-            target: priceFeed,
-          });
-        } catch {
-          return null;
-        }
-      })
-    );
-
     addressesRegistryList.forEach((item, idx) => {
-      const collateralConfig = getCollateralConfig(`${colRegistryAddress}-${api.chain}`, item.index);
+      const troveManagerIndex = item.troveManagerIndex;
+      const collateralConfig = getCollateralConfig(protocolId, api.chain, troveManagerIndex);
+      // FIX: do some check to make sure given id is correct
       coreCollateralImmutablesList.push({
-        getTroveManagerIndex: item.index,
+        getTroveManagerIndex: troveManagerIndex,
         CCR: CCRList[idx],
         SCR: SCRList[idx],
         MCR: MCRList[idx],
-        troveManager: troveManagersList[item.index],
+        troveManager: troveManagersList[troveManagerIndex],
         collToken: collTokenList[idx],
-        activePool: activePoolsList[item.index],
+        activePool: activePoolsList[troveManagerIndex],
         defaultPool: defaultPoolsList[idx],
         stabilityPool: stabilityPoolList[idx],
         borrowerOperationsAddress: borrowerOperationsAddressList[idx],
         sortedTroves: sortedTrovesList[idx],
         troveNFT: troveNFTList[idx],
         priceFeed: priceFeedList[idx],
-        isLST: rateProviderAddressList[idx] !== null,
-        rateProviderAddress: rateProviderAddressList[idx],
-        LSTunderlying: collateralConfig.LSTunderlying,
-        deviationThreshold: collateralConfig.deviationThreshold,
-        oracleType: collateralConfig.oracleType,
+        isLST: collateralConfig.isLST ?? null,
+        LSTunderlying: collateralConfig.LSTunderlying ?? null,
+        collAlternativeChainAddresses: collateralConfig.collAlternativeChainAddresses ?? null,
       });
     });
 
     await Promise.all(
       missingAddressesRegistryIndexes.map(async (index) => {
+        const troveManagerIndex = index;
+        const collateralConfig = getCollateralConfig(protocolId, api.chain, troveManagerIndex);
         console.error(
-          `Addresses registry for trove manager ${troveManagersList[index]} failed to fetch, using alternative calls.`
+          `Addresses registry for trove manager ${troveManagersList[troveManagerIndex]} failed to fetch, using alternative calls.`
         );
         console.error(
-          `Price feed for trove manager ${troveManagersList[index]} not found, setting it and all related values to null.`
+          `Price feed for trove manager ${troveManagersList[troveManagerIndex]} not found, setting it to null.`
         );
-        const troveManager = troveManagersList[index];
-        const activePool = activePoolsList[index];
+        const troveManager = troveManagersList[troveManagerIndex];
+        const activePool = activePoolsList[troveManagerIndex];
         const borrowerOperationsAddress = (await api.call({
           abi: "address:borrowerOperationsAddress",
           target: activePool,
@@ -261,7 +250,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
           ]);
         accInterestRouterList.push(interestRouter);
         coreCollateralImmutablesList.push({
-          getTroveManagerIndex: index,
+          getTroveManagerIndex: troveManagerIndex,
           CCR: CCR,
           SCR: SCR,
           MCR: MCR,
@@ -274,11 +263,9 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
           sortedTroves: sortedTroves,
           troveNFT: troveNFT,
           priceFeed: null,
-          isLST: null,
-          rateProviderAddress: null,
-          LSTunderlying: null,
-          deviationThreshold: null,
-          oracleType: null,
+          isLST: collateralConfig.isLST ?? null,
+          LSTunderlying: collateralConfig.LSTunderlying ?? null,
+          collAlternativeChainAddresses: collateralConfig.collAlternativeChainAddresses ?? null,
         });
       })
     );
@@ -292,11 +279,11 @@ export function getImmutablesByColRegistry(colRegistryAddress: string) {
   };
 }
 
-export function getCorePoolDataById(projectId: string) {
+export function getCorePoolDataByProtocolId(protocolId: number) {
   return async (api: ChainApi) => {
-    const immutableData = await getLatestCoreImmutables(Number(projectId), api.chain);
+    const immutableData = await getLatestCoreImmutables(protocolId, api.chain);
     if (!immutableData) {
-      throw new Error(`No immutable data found for project with Id ${projectId}.`);
+      throw new Error(`No immutable data found for project with Id ${protocolId}.`);
     }
 
     const { collateralRegistry } = immutableData;
@@ -308,7 +295,7 @@ export function getCorePoolDataById(projectId: string) {
 
     if (Object.keys(immutableData.coreCollateralImmutables).length !== totalCollaterals) {
       console.error(
-        `project Id ${projectId} immutables has ${
+        `project Id ${protocolId} immutables has ${
           Object.keys(immutableData.coreCollateralImmutables).length
         } collaterals stored when current number should be ${totalCollaterals}. Attempting to fetch pool data for first ${totalCollaterals} collaterals.`
       );
