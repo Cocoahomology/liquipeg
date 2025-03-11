@@ -30,8 +30,11 @@ export const fetchWithRetry = async (
     );
     return response;
   } catch (error) {
+    console.error(error);
     if (error instanceof Error) {
-      throw new Error(`Failed to fetch data from ${url} after ${retries} retries: ${error.message}`);
+      throw new Error(
+        `Failed to fetch data from ${url} after ${retries} retries: ${error.message}\nStack: ${error.stack}`
+      );
     } else {
       throw new Error(`Failed to fetch data from ${url} after ${retries} retries: Unknown error`);
     }

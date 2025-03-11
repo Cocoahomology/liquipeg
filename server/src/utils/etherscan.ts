@@ -76,8 +76,8 @@ export const getTxsBlockRangeEtherscan = async (
 export const getContractCreationDataEtherscan = async (
   chain: string,
   address: string,
-  retries?: number,
-  timeout?: number
+  retries: number = 1,
+  timeout: number = 100000
 ) => {
   const apiKey = apiKeys[0];
   const chainId = new sdk.ChainApi({ chain: chain }).chainId;
@@ -85,8 +85,9 @@ export const getContractCreationDataEtherscan = async (
     return (
       await fetchWithRetry(
         `${v2Endpoint}/api?chainid=${chainId}&module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`,
-        retries ?? 1,
-        timeout ?? 100000
+        retries,
+        timeout,
+        1500
       )
     ).result[0] as any;
   } catch (error) {
