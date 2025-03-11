@@ -117,6 +117,7 @@ export const coreColImmutables = table(
     MCR: d.varchar({ length: 96 }).notNull(),
     troveManager: d.varchar({ length: 42 }).notNull(),
     collToken: d.varchar({ length: 42 }).notNull(),
+    collTokenDecimals: d.varchar({ length: 96 }).default("18").notNull(),
     activePool: d.varchar({ length: 42 }).notNull(),
     defaultPool: d.varchar({ length: 42 }).notNull(),
     stabilityPool: d.varchar({ length: 42 }).notNull(),
@@ -230,7 +231,31 @@ export const blockTimestamps = table(
   ]
 );
 
-export const protocolsRelations = relations(protocols, ({ one }) => ({
+export const pricesAndRates = table(
+  "prices_and_rates",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveManagerPk: d
+      .integer()
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
+      .notNull(),
+    blockNumber: d.integer().notNull(),
+    colUSDPriceFeed: d.varchar({ length: 96 }),
+    colUSDOracle: d.varchar({ length: 96 }),
+    LSTUnderlyingCanonicalRate: d.varchar({ length: 96 }),
+    LSTUnderlyingMarketRate: d.varchar({ length: 96 }),
+    UnderlyingUSDOracle: d.varchar({ length: 96 }),
+    deviation: d.varchar({ length: 96 }),
+    redemptionRelatedOracles: d.jsonb(),
+  },
+  (pricesAndRates) => [
+    d
+      .uniqueIndex("prices_and_rates_block_number_trove_manager_unique_idx")
+      .on(pricesAndRates.blockNumber, pricesAndRates.troveManagerPk),
+  ]
+);
+
+export const protocolsRelations = relations(protocols, ({ one, many }) => ({
   troveManagers: one(troveManagers, {
     fields: [protocols.pk],
     references: [troveManagers.protocolPk],
@@ -247,6 +272,7 @@ export const protocolsRelations = relations(protocols, ({ one }) => ({
     fields: [protocols.pk],
     references: [recordedBlocks.protocolPk],
   }),
+  pricesAndRates: many(pricesAndRates),
 }));
 
 export const troveManagerRelations = relations(troveManagers, ({ one, many }) => ({
@@ -264,6 +290,7 @@ export const troveManagerRelations = relations(troveManagers, ({ one, many }) =>
     fields: [troveManagers.pk],
     references: [colPoolData.troveManagerPk],
   }),
+  pricesAndRates: many(pricesAndRates),
 }));
 
 export const troveDataRelations = relations(troveData, ({ one }) => ({
@@ -308,6 +335,13 @@ export const colPoolDataRelations = relations(colPoolData, ({ one }) => ({
   }),
 }));
 
+export const pricesAndRatesRelations = relations(pricesAndRates, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [pricesAndRates.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
 const tables = {
   protocols,
   troveManagers,
@@ -320,6 +354,7 @@ const tables = {
   errorLogs,
   recordedBlocks,
   blockTimestamps,
+  pricesAndRates,
 };
 
 export type TableName =
@@ -333,7 +368,8 @@ export type TableName =
   | "colPoolData"
   | "errorLogs"
   | "recordedBlocks"
-  | "blockTimestamps";
+  | "blockTimestamps"
+  | "pricesAndRates";
 
 export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];

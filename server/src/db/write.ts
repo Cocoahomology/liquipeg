@@ -8,12 +8,13 @@ import {
   CoreImmutablesEntry,
   EventDataEntry,
   RecordedBlocksEntryWithChain,
+  CollateralPricesAndRatesEntry,
 } from "../utils/types";
 import { eq, and, sql } from "drizzle-orm";
 import { PgTransaction } from "drizzle-orm/pg-core";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 import retry from "async-retry";
-import protocolData from "../data/protocolData";
+import { importProtocol } from "../data/importProtocol";
 import { PromisePool } from "@supercharge/promise-pool";
 
 // FIX: types throughout this file
@@ -117,7 +118,8 @@ async function insertEntries(
     const { protocolId, chain } = entry;
     const key = `${protocolId}-${chain}`;
 
-    const protocolDbName = protocolData.find((protocol) => protocol.id === protocolId)?.protocolDbName;
+    const protocol = importProtocol(undefined, protocolId);
+    const protocolDbName = protocol?.protocolDbName;
 
     if (!protocolDbName) {
       throw new Error(
@@ -606,6 +608,134 @@ export async function insertBlockTimestampEntries(
                     },
                   });
               }
+            },
+            {
+              retries: retryCount,
+              minTimeout: retryDelay,
+              onRetry: (error) => {
+                logFirstError(error as Error, chain);
+              },
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error) {
+            logFirstError(error, chain);
+            throw error;
+          } else throw error;
+        }
+      });
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
+    });
+  }
+}
+
+export async function insertPricesAndRatesEntries(
+  pricesAndRatesList: CollateralPricesAndRatesEntry[],
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
+) {
+  const {
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
+    retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
+  } = options;
+
+  if (!pricesAndRatesList.length) return;
+
+  const logger = ErrorLoggerService.getInstance();
+  const protocolsTable = getTable("protocols");
+  const protocolMap = new Map<string, number>();
+
+  for (const entry of pricesAndRatesList) {
+    const { protocolId, chain } = entry;
+    if (!protocolId) continue;
+
+    const key = `${protocolId}-${chain}`;
+
+    if (!protocolMap.has(key)) {
+      const protocol = await db
+        .select()
+        .from(protocolsTable)
+        .where(and(eq(protocolsTable.protocolId, protocolId), eq(protocolsTable.chain, chain)));
+
+      if (protocol.length) {
+        protocolMap.set(key, protocol[0].pk);
+      } else {
+        throw new Error(`Protocol not found: ${protocolId} on chain ${chain}`);
+      }
+    }
+  }
+
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "pricesAndRates",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const executeInserts = async (transaction: any) => {
+    const pricesAndRatesTable = getTable("pricesAndRates");
+    await PromisePool.for(pricesAndRatesList)
+      .withConcurrency(20)
+      .withTaskTimeout(30000)
+      .process(async (entry) => {
+        const {
+          protocolId,
+          chain,
+          blockNumber,
+          getTroveManagerIndex,
+          colUSDPriceFeed,
+          colUSDOracle,
+          LSTUnderlyingCanonicalRate,
+          LSTUnderlyingMarketRate,
+          UnderlyingUSDOracle,
+          deviation,
+          redemptionRelatedOracles,
+        } = entry;
+        if (!protocolId) return;
+
+        try {
+          const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
+          const troveManagerPk = await getTroveManagerPk(transaction, protocolPk!, getTroveManagerIndex);
+
+          await retry(
+            async () => {
+              await transaction
+                .insert(pricesAndRatesTable)
+                .values({
+                  troveManagerPk,
+                  blockNumber,
+                  colUSDPriceFeed,
+                  colUSDOracle,
+                  LSTUnderlyingCanonicalRate,
+                  LSTUnderlyingMarketRate,
+                  UnderlyingUSDOracle,
+                  deviation,
+                  redemptionRelatedOracles,
+                })
+                .onConflictDoUpdate({
+                  target: [pricesAndRatesTable.blockNumber, pricesAndRatesTable.troveManagerPk],
+                  set: {
+                    colUSDPriceFeed,
+                    colUSDOracle,
+                    LSTUnderlyingCanonicalRate,
+                    LSTUnderlyingMarketRate,
+                    UnderlyingUSDOracle,
+                    deviation,
+                    redemptionRelatedOracles,
+                  },
+                });
             },
             {
               retries: retryCount,

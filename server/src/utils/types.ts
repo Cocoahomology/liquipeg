@@ -72,6 +72,7 @@ export type CoreColImmutables = {
   MCR: string;
   troveManager: string;
   collToken: string;
+  collTokenDecimals: string;
   activePool: string;
   defaultPool: string;
   stabilityPool: string;
@@ -126,25 +127,28 @@ export type RecordedBlocksEntryWithChain = {
 };
 
 export type CollateralPricesAndRatesEntry = {
+  protocolId?: number;
   blockNumber?: number;
   chain: string;
-  collToken: string;
-  colUSDPriceFeed: string;
-  colUSDOracle: string;
-  LSTUnderlyingCanonicalRate: string;
-  LSTUnderlyingMarketRate: string;
-  UnderlyingUSDOracle: string;
-  deviation: string;
-  colUSDOnchainEstimatedPrice: string;
+  getTroveManagerIndex: number;
+  colUSDPriceFeed: string | null;
+  colUSDOracle: string | null;
+  LSTUnderlyingCanonicalRate: string | null;
+  LSTUnderlyingMarketRate: string | null;
+  UnderlyingUSDOracle: string | null;
+  deviation: string | null;
+  redemptionRelatedOracles: {
+    [key: `redemptionRelatedOracle${number}`]: string;
+  };
 };
 
 export type CollateralPricesAndRates = {
-  collToken: string;
-  colUSDPriceFeed: string;
-  colUSDOracle: string;
-  LSTUnderlyingCanonicalRate: string;
-  LSTUnderlyingMarketRate: string;
-  underlyingUSDOracle: string;
-  deviation: string;
-  colUSDOnchainEstimatedPrice: string;
+  getTroveManagerIndex: number;
+  colUSDPriceFeed: string | null;
+  colUSDOracle: string | null;
+  LSTUnderlyingCanonicalRate: string | null;
+  LSTUnderlyingMarketRate: string | null;
+  underlyingUSDOracle: string | null;
+  deviation: string | null;
+  [key: `redemptionRelatedOracle${number}`]: string;
 };
