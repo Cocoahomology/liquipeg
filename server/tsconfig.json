@@ -5,7 +5,7 @@
     }
   },
   "compilerOptions": {
-    "target": "es2019",
+    "target": "es2022",
     "skipLibCheck": false,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -21,7 +21,7 @@
     "noImplicitThis": false,
     "noUnusedLocals": false,
     "noUnusedParameters": true,
-    "lib": ["ES2019"],
+    "lib": ["ES2022"],
     "types": ["node"]
   },
   "include": ["src"]
