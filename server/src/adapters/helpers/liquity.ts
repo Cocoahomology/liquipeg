@@ -137,7 +137,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       await Promise.allSettled(
         troveManagersList.map(async (troveManager, index) => {
           try {
-            const creationData = await getContractCreationDataEtherscan(api.chain, troveManager, 2);
+            const creationData = await getContractCreationDataEtherscan(api.chain, troveManager, 2, 30000);
             const creationBytecode = creationData.creationBytecode;
             if (!creationBytecode) {
               throw new Error(`No creation bytecode returned for trove manager ${troveManager}.`);
@@ -194,6 +194,10 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       api.multiCall({ abi: "address:priceFeed", calls: addressesRegistryList.map((item) => item.address) }),
     ]);
 
+    const collTokenDecimalsList = await api
+      .multiCall({ abi: "uint8:decimals", calls: collTokenList })
+      .then((res) => res.map((item) => String(item)));
+
     accInterestRouterList = [...interestRouterList];
 
     addressesRegistryList.forEach((item, idx) => {
@@ -207,6 +211,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
         MCR: MCRList[idx],
         troveManager: troveManagersList[troveManagerIndex],
         collToken: collTokenList[idx],
+        collTokenDecimals: collTokenDecimalsList[idx],
         activePool: activePoolsList[troveManagerIndex],
         defaultPool: defaultPoolsList[idx],
         stabilityPool: stabilityPoolList[idx],
@@ -221,6 +226,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
     });
 
     await Promise.all(
+      // FIX: test this again
       missingAddressesRegistryIndexes.map(async (index) => {
         const troveManagerIndex = index;
         const collateralConfig = getCollateralConfig(protocolId, api.chain, troveManagerIndex);
@@ -249,6 +255,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
             api.call({ abi: "address:troveNFT", target: troveManager }),
           ]);
         accInterestRouterList.push(interestRouter);
+        const collTokenDecimals = String(await api.call({ abi: "uint8:decimals", target: collToken }));
         coreCollateralImmutablesList.push({
           getTroveManagerIndex: troveManagerIndex,
           CCR: CCR,
@@ -256,6 +263,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
           MCR: MCR,
           troveManager: troveManager,
           collToken: collToken,
+          collTokenDecimals: collTokenDecimals,
           activePool: activePool,
           defaultPool: defaultPool,
           stabilityPool: stabilityPool,
