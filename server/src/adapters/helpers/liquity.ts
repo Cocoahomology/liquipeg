@@ -118,6 +118,10 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       abi: "address:boldToken",
       target: colRegistryAddress,
     })) as string;
+    const boldTokenSymbol = (await api.call({
+      abi: "string:symbol",
+      target: boldToken,
+    })) as string;
     const troveManagersList = (await api.fetchList({
       lengthAbi: "totalCollaterals",
       itemAbi: "getTroveManager",
@@ -198,6 +202,10 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       .multiCall({ abi: "uint8:decimals", calls: collTokenList })
       .then((res) => res.map((item) => String(item)));
 
+    const collTokenSymbolList = await api
+      .multiCall({ abi: "string:symbol", calls: collTokenList })
+      .then((res) => res.map((item) => String(item)));
+
     accInterestRouterList = [...interestRouterList];
 
     addressesRegistryList.forEach((item, idx) => {
@@ -211,6 +219,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
         MCR: MCRList[idx],
         troveManager: troveManagersList[troveManagerIndex],
         collToken: collTokenList[idx],
+        collTokenSymbol: collTokenSymbolList[idx],
         collTokenDecimals: collTokenDecimalsList[idx],
         activePool: activePoolsList[troveManagerIndex],
         defaultPool: defaultPoolsList[idx],
@@ -256,6 +265,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
           ]);
         accInterestRouterList.push(interestRouter);
         const collTokenDecimals = String(await api.call({ abi: "uint8:decimals", target: collToken }));
+        const collTokenSymbol = String(await api.call({ abi: "string:symbol", target: collToken }));
         coreCollateralImmutablesList.push({
           getTroveManagerIndex: troveManagerIndex,
           CCR: CCR,
@@ -263,6 +273,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
           MCR: MCR,
           troveManager: troveManager,
           collToken: collToken,
+          collTokenSymbol: collTokenSymbol,
           collTokenDecimals: collTokenDecimals,
           activePool: activePool,
           defaultPool: defaultPool,
@@ -280,6 +291,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
 
     return {
       boldToken: boldToken,
+      boldTokenSymbol: boldTokenSymbol,
       collateralRegistry: colRegistryAddress,
       interestRouter: accInterestRouterList[0],
       coreCollateralImmutables: coreCollateralImmutablesList,
