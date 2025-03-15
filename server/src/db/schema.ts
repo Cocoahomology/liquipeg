@@ -253,7 +253,7 @@ export const troveManagerTimeSamplePoints = table(
     pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
     chain: d.varchar({ length: 32 }).notNull(),
     date: d.date().notNull(), // The date this sample represents
-    hour: d.integer(), // null for daily points, 1-23 for hourly points
+    hour: d.integer().notNull(), // 0 for daily points, 1-23 for hourly points
     troveManagerPk: d
       .integer()
       .references(() => troveManagers.pk, { onDelete: "cascade" })
@@ -271,6 +271,10 @@ export const troveManagerTimeSamplePoints = table(
         troveManagerTimeSamplePoints.hour,
         troveManagerTimeSamplePoints.troveManagerPk
       ),
+    d.check(
+      "trove_manager_time_sample_points_hour_check",
+      sql`${troveManagerTimeSamplePoints.hour} >= 0 AND ${troveManagerTimeSamplePoints.hour} <= 23`
+    ),
   ]
 );
 
@@ -280,7 +284,7 @@ export const protocolTimeSamplePoints = table(
     pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
     chain: d.varchar({ length: 32 }).notNull(),
     date: d.date().notNull(), // The date this sample represents
-    hour: d.integer(), // null for daily points, 1-23 for hourly points
+    hour: d.integer().notNull(), // 0 for daily points, 1-23 for hourly points
     protocolPk: d
       .integer()
       .references(() => protocols.pk, { onDelete: "cascade" })
@@ -293,6 +297,10 @@ export const protocolTimeSamplePoints = table(
     d
       .uniqueIndex("protocol_time_sample_points_date_hour_protocol_unique_idx")
       .on(protocolTimeSamplePoints.date, protocolTimeSamplePoints.hour, protocolTimeSamplePoints.protocolPk),
+    d.check(
+      "protocol_time_sample_points_hour_check",
+      sql`${protocolTimeSamplePoints.hour} >= 0 AND ${protocolTimeSamplePoints.hour} <= 23`
+    ),
   ]
 );
 

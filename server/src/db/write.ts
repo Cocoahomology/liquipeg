@@ -812,7 +812,7 @@ export async function insertPricesAndRatesEntries(
 export async function insertSamplePointEntries(
   samplePoints: {
     date: Date;
-    hour: number | null;
+    hour: number;
     targetTimestamp: number;
     troveManagerPk?: number;
     protocolPk?: number;
