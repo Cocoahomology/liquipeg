@@ -80,7 +80,7 @@ export async function getLatestCoreImmutables(
               const { pk, troveManagerPk, blockNumber, collAlternativeChainAddresses, ...colImmutableData } =
                 colImmutable;
               return {
-                getTroveManagerIndex: tm.troveManagerIndex,
+                troveManagerIndex: tm.troveManagerIndex,
                 collAlternativeChainAddresses: collAlternativeChainAddresses as { [chain: string]: string[] } | null,
                 ...colImmutableData,
               };
@@ -164,7 +164,7 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
 
               return {
                 protocolId: protocol.protocolId,
-                getTroveManagerIndex: tm.troveManagerIndex,
+                troveManagerIndex: tm.troveManagerIndex,
                 blockNumber: maxBlock,
                 chain,
                 troveData: troveDataEntries,
@@ -215,7 +215,7 @@ export async function getLatestPoolDataEntries(
               const { pk, troveManagerPk, blockNumber, ...formattedColPool } = colPool;
 
               return {
-                getTroveManagerIndex: tm.troveManagerIndex,
+                troveManagerIndex: tm.troveManagerIndex,
                 ...formattedColPool,
               };
             },
@@ -383,7 +383,7 @@ export async function getLatestPricesAndRates(protocolId: number, chain: string,
               const { pk, troveManagerPk, ...formattedPriceData } = priceData;
 
               return {
-                getTroveManagerIndex: tm.troveManagerIndex,
+                troveManagerIndex: tm.troveManagerIndex,
                 ...formattedPriceData,
               };
             },

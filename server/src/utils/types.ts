@@ -3,13 +3,13 @@
 export type TroveDataEntry = {
   protocolId: number;
   blockNumber: number;
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   chain: string;
   troveData: TroveData[];
 };
 
 export type TroveDataByManager = {
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   troveData: TroveData[];
 };
 
@@ -30,7 +30,7 @@ type TroveData = {
 export type EventDataEntry = {
   protocolId: number;
   blockNumber: number;
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   chain: string;
   txHash: string;
   logIndex: number;
@@ -39,7 +39,7 @@ export type EventDataEntry = {
 };
 
 export type EventData = {
-  getTroveManagerIndex?: number;
+  troveManagerIndex?: number;
   blockNumber: number;
   chain: string;
   txHash: string;
@@ -68,7 +68,7 @@ export type CoreImmutables = {
 };
 
 export type CoreColImmutables = {
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   CCR: string;
   SCR: string;
   MCR: string;
@@ -106,7 +106,7 @@ export type CorePoolData = {
 };
 
 export type ColPoolData = {
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   getEntireSystemColl: string;
   getEntireSystemDebt: string;
   getTroveIdsCount: string;
@@ -133,7 +133,7 @@ export type CollateralPricesAndRatesEntry = {
   protocolId?: number;
   blockNumber?: number;
   chain: string;
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   colUSDPriceFeed: string | null;
   colUSDOracle: string | null;
   LSTUnderlyingCanonicalRate: string | null;
@@ -146,7 +146,7 @@ export type CollateralPricesAndRatesEntry = {
 };
 
 export type CollateralPricesAndRates = {
-  getTroveManagerIndex: number;
+  troveManagerIndex: number;
   colUSDPriceFeed: string | null;
   colUSDOracle: string | null;
   LSTUnderlyingCanonicalRate: string | null;

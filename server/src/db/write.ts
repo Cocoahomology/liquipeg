@@ -227,10 +227,10 @@ async function insertTroveData(
     }
   };
 
-  const { getTroveManagerIndex, troveData, chain } = troveDataEntry;
+  const { troveManagerIndex, troveData, chain } = troveDataEntry;
 
   try {
-    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
 
     if (onConflict === "ignore") {
       await trx
@@ -305,9 +305,9 @@ async function insertCoreImmutables(
 
     await PromisePool.for(coreCollateralImmutables).process(async (coreColImmutables) => {
       try {
-        const { getTroveManagerIndex } = coreColImmutables;
+        const { troveManagerIndex } = coreColImmutables;
 
-        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
 
         const colPoolDataEntry = {
           troveManagerPk,
@@ -389,8 +389,8 @@ async function insertCorePoolData(
 
     await PromisePool.for(collateralPoolData).process(async (colPoolData) => {
       try {
-        const { getTroveManagerIndex } = colPoolData;
-        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+        const { troveManagerIndex } = colPoolData;
+        const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
 
         const colPoolDataEntry = {
           troveManagerPk,
@@ -442,14 +442,14 @@ async function insertEventData(
     }
   };
 
-  const { getTroveManagerIndex, protocolId, chain, blockNumber, ...remainingEventData } = eventData;
+  const { troveManagerIndex, protocolId, chain, blockNumber, ...remainingEventData } = eventData;
 
   try {
-    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
 
     const eventDataEntry = {
       troveManagerPk: troveManagerPk,
-      getTroveManagerIndex: getTroveManagerIndex,
+      troveManagerIndex: troveManagerIndex,
       blockNumber,
       ...remainingEventData,
     };
@@ -740,7 +740,7 @@ export async function insertPricesAndRatesEntries(
           protocolId,
           chain,
           blockNumber,
-          getTroveManagerIndex,
+          troveManagerIndex,
           colUSDPriceFeed,
           colUSDOracle,
           LSTUnderlyingCanonicalRate,
@@ -753,7 +753,7 @@ export async function insertPricesAndRatesEntries(
 
         try {
           const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
-          const troveManagerPk = await getTroveManagerPk(transaction, protocolPk!, getTroveManagerIndex);
+          const troveManagerPk = await getTroveManagerPk(transaction, protocolPk!, troveManagerIndex);
 
           await retry(
             async () => {

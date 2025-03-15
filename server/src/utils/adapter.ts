@@ -123,7 +123,7 @@ export const runAdapterSnapshot = async (
                 return {
                   protocolId: id,
                   blockNumber: blockNumber,
-                  getTroveManagerIndex: trove.getTroveManagerIndex,
+                  troveManagerIndex: trove.troveManagerIndex,
                   chain: chain,
                   troveData: trove.troveData,
                 };
@@ -526,8 +526,8 @@ export const runTroveOperationsHistorical = async (
           );
 
           return eventData.map((event) => {
-            if (event.getTroveManagerIndex == null) {
-              throw new Error(`getTroveManagerIndex not found in event data for ${id} ${protocolDbName}-${chain}`);
+            if (event.troveManagerIndex == null) {
+              throw new Error(`troveManagerIndex not found in event data for ${id} ${protocolDbName}-${chain}`);
             }
             blockNumbers.add(event.blockNumber);
             return {

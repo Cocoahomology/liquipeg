@@ -75,7 +75,7 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
           };
         });
         return {
-          getTroveManagerIndex: index,
+          troveManagerIndex: index,
           troveData: formattedTroveData,
         };
       })
@@ -104,7 +104,7 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
             argKeys: eventAbi.keys,
           },
         ]);
-        results.push(...res.map((obj) => ({ ...obj, getTroveManagerIndex: index })));
+        results.push(...res.map((obj) => ({ ...obj, troveManagerIndex: index })));
       }
     });
 
@@ -213,7 +213,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       const collateralConfig = getCollateralConfig(protocolId, api.chain, troveManagerIndex);
       // FIX: do some check to make sure given id is correct
       coreCollateralImmutablesList.push({
-        getTroveManagerIndex: troveManagerIndex,
+        troveManagerIndex: troveManagerIndex,
         CCR: CCRList[idx],
         SCR: SCRList[idx],
         MCR: MCRList[idx],
@@ -267,7 +267,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
         const collTokenDecimals = String(await api.call({ abi: "uint8:decimals", target: collToken }));
         const collTokenSymbol = String(await api.call({ abi: "string:symbol", target: collToken }));
         coreCollateralImmutablesList.push({
-          getTroveManagerIndex: troveManagerIndex,
+          troveManagerIndex: troveManagerIndex,
           CCR: CCR,
           SCR: SCR,
           MCR: MCR,
@@ -389,7 +389,7 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
 
     for (let i = 0; i < troveManagerList.length; i++) {
       collateralPoolData.push({
-        getTroveManagerIndex: i,
+        troveManagerIndex: i,
         getEntireSystemColl: getEntireSystemColl[i],
         getEntireSystemDebt: getEntireSystemDebt[i],
         getTroveIdsCount: getTroveIdsCount[i],
