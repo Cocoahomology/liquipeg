@@ -113,13 +113,13 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
 
     await Promise.allSettled(
       coreColImmutables.map(async (colImmutables) => {
-        const { getTroveManagerIndex, priceFeed } = colImmutables;
+        const { troveManagerIndex, priceFeed } = colImmutables;
         let collateralConfig = null as CollateralConfig | null;
         try {
-          collateralConfig = getCollateralConfig(protocolId, api.chain, getTroveManagerIndex);
+          collateralConfig = getCollateralConfig(protocolId, api.chain, troveManagerIndex);
           if (!collateralConfig) throw new Error("No collateral config found");
         } catch (error) {
-          const errString = `No collateral config found for id ${protocolId}, chain ${api.chain}, troveManagerIndex ${getTroveManagerIndex} check it has been added to collateralConfig.ts.`;
+          const errString = `No collateral config found for id ${protocolId}, chain ${api.chain}, troveManagerIndex ${troveManagerIndex} check it has been added to collateralConfig.ts.`;
           logger.error({
             error: errString,
             keyword: "critical",
@@ -147,7 +147,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
         } = collateralConfig;
 
         const entry: CollateralPricesAndRates = {
-          getTroveManagerIndex,
+          troveManagerIndex,
           colUSDPriceFeed: null,
           colUSDOracle: null,
           LSTUnderlyingCanonicalRate: null,
@@ -317,10 +317,10 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
           try {
             entry.deviation = evaluateArithmeticExpression(deviationFormula, {
               ...entry,
-              getTroveManagerIndex: String(entry.getTroveManagerIndex),
+              troveManagerIndex: String(entry.troveManagerIndex),
             });
           } catch (error) {
-            const errString = `Error calculating deviation for getTroveManagerIndex ${getTroveManagerIndex}: ${error}`;
+            const errString = `Error calculating deviation for troveManagerIndex ${troveManagerIndex}: ${error}`;
             logger.error({
               error: errString,
               keyword: "missingValues",
@@ -339,7 +339,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
 
         Object.entries(checkFields).forEach(([field, value]) => {
           if (value === null) {
-            const errString = `Missing value: ${field} is null for getTroveManagerIndex ${getTroveManagerIndex}`;
+            const errString = `Missing value: ${field} is null for troveManagerIndex ${troveManagerIndex}`;
             logger.error({
               error: errString,
               keyword: "missingValues",
