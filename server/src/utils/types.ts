@@ -138,7 +138,7 @@ export type CollateralPricesAndRatesEntry = {
   colUSDOracle: string | null;
   LSTUnderlyingCanonicalRate: string | null;
   LSTUnderlyingMarketRate: string | null;
-  UnderlyingUSDOracle: string | null;
+  underlyingUSDOracle: string | null;
   deviation: string | null;
   redemptionRelatedOracles: {
     [key: `redemptionRelatedOracle${number}`]: string;

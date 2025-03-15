@@ -214,7 +214,7 @@ export const pricesAndRates = table(
     colUSDOracle: d.varchar({ length: 96 }),
     LSTUnderlyingCanonicalRate: d.varchar({ length: 96 }),
     LSTUnderlyingMarketRate: d.varchar({ length: 96 }),
-    UnderlyingUSDOracle: d.varchar({ length: 96 }),
+    underlyingUSDOracle: d.varchar({ length: 96 }),
     deviation: d.varchar({ length: 96 }),
     redemptionRelatedOracles: d.jsonb(),
   },

@@ -745,7 +745,7 @@ export async function insertPricesAndRatesEntries(
           colUSDOracle,
           LSTUnderlyingCanonicalRate,
           LSTUnderlyingMarketRate,
-          UnderlyingUSDOracle,
+          underlyingUSDOracle,
           deviation,
           redemptionRelatedOracles,
         } = entry;
@@ -766,7 +766,7 @@ export async function insertPricesAndRatesEntries(
                   colUSDOracle,
                   LSTUnderlyingCanonicalRate,
                   LSTUnderlyingMarketRate,
-                  UnderlyingUSDOracle,
+                  underlyingUSDOracle,
                   deviation,
                   redemptionRelatedOracles,
                 })
@@ -777,7 +777,7 @@ export async function insertPricesAndRatesEntries(
                     colUSDOracle,
                     LSTUnderlyingCanonicalRate,
                     LSTUnderlyingMarketRate,
-                    UnderlyingUSDOracle,
+                    underlyingUSDOracle,
                     deviation,
                     redemptionRelatedOracles,
                   },
