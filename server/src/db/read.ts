@@ -27,7 +27,7 @@ async function getProtocol(protocolId: number, chain: string) {
   );
 }
 
-async function getTroveManagersForProtocol(protocolId: number, chain: string, troveManagerIndex?: number) {
+export async function getTroveManagersForProtocol(protocolId: number, chain: string, troveManagerIndex?: number) {
   return withDbError(
     async () => {
       const protocol = await getProtocol(protocolId, chain);
@@ -135,6 +135,11 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
               // Get the highest block number
               const maxBlock = Math.max(...entries.map((e) => e.block_number));
 
+              // Get timestamp for the max block number
+              const blockTimestamp = await db.query.blockTimestamps.findFirst({
+                where: and(eq(blockTimestamps.blockNumber, maxBlock), eq(blockTimestamps.chain, chain)),
+              });
+
               // Transform entries by removing internal fields, fix snake case from raw sql result
               const troveDataEntries = entries.map(
                 ({
@@ -166,6 +171,7 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
                 protocolId: protocol.protocolId,
                 troveManagerIndex: tm.troveManagerIndex,
                 blockNumber: maxBlock,
+                timestamp: blockTimestamp?.timestamp || null,
                 chain,
                 troveData: troveDataEntries,
               } as TroveDataEntry;
@@ -373,17 +379,37 @@ export async function getLatestPricesAndRates(protocolId: number, chain: string,
         troveMgrs.map((tm) =>
           withDbError(
             async () => {
-              const priceData = await db.query.pricesAndRates.findFirst({
-                where: eq(pricesAndRates.troveManagerPk, tm.pk),
-                orderBy: [desc(pricesAndRates.blockNumber)],
-              });
+              const priceData = await db
+                .select({
+                  pk: pricesAndRates.pk,
+                  troveManagerPk: pricesAndRates.troveManagerPk,
+                  blockNumber: pricesAndRates.blockNumber,
+                  colUSDPriceFeed: pricesAndRates.colUSDPriceFeed,
+                  colUSDOracle: pricesAndRates.colUSDOracle,
+                  LSTUnderlyingCanonicalRate: pricesAndRates.LSTUnderlyingCanonicalRate,
+                  LSTUnderlyingMarketRate: pricesAndRates.LSTUnderlyingMarketRate,
+                  underlyingUSDOracle: pricesAndRates.underlyingUSDOracle,
+                  deviation: pricesAndRates.deviation,
+                  redemptionRelatedOracles: pricesAndRates.redemptionRelatedOracles,
+                  timestamp: blockTimestamps.timestamp,
+                })
+                .from(pricesAndRates)
+                .where(eq(pricesAndRates.troveManagerPk, tm.pk))
+                .leftJoin(
+                  blockTimestamps,
+                  and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
+                )
+                .orderBy(desc(pricesAndRates.blockNumber))
+                .limit(1)
+                .then((rows) => rows[0]);
 
               if (!priceData) return null;
 
-              const { pk, troveManagerPk, ...formattedPriceData } = priceData;
+              const { pk, troveManagerPk, timestamp, ...formattedPriceData } = priceData;
 
               return {
                 troveManagerIndex: tm.troveManagerIndex,
+                timestamp,
                 ...formattedPriceData,
               };
             },
@@ -392,15 +418,13 @@ export async function getLatestPricesAndRates(protocolId: number, chain: string,
         )
       );
 
-      const maxBlock = Math.max(
-        ...latestPricesAndRates.filter((pr): pr is NonNullable<typeof pr> => pr !== null).map((pr) => pr.blockNumber)
-      );
+      const filteredPrices = latestPricesAndRates.filter((pr): pr is NonNullable<typeof pr> => pr !== null);
+      if (filteredPrices.length === 0) return null;
 
       return {
         protocolId,
         chain,
-        blockNumber: maxBlock,
-        pricesAndRatesData: latestPricesAndRates.filter((pr): pr is NonNullable<typeof pr> => pr !== null),
+        pricesAndRatesData: filteredPrices,
       };
     },
     { table: "pricesAndRates", chain, protocolId }
