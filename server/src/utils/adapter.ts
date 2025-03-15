@@ -97,7 +97,7 @@ export const runAdapterSnapshot = async (
 
   const finalInsertOptions: InsertOptions = {
     allowNullDbValues: false,
-    onConflict: "error",
+    onConflict: "update",
     retryCount: 1,
     retryDelay: 2000,
     ...insertOptions,
@@ -185,7 +185,12 @@ export const runAdapterSnapshot = async (
             }
           );
           await db.transaction(async (trx) => {
-            await insertEntriesFromAdapter("fetchImmutables", [coreImmutablesEntry], finalInsertOptions, trx);
+            await insertEntriesFromAdapter(
+              "fetchImmutables",
+              [coreImmutablesEntry],
+              { ...finalInsertOptions, onConflict: "update" },
+              trx
+            );
             await insertBlockTimestampEntries(
               chain,
               [{ blockNumber, timestamp: blockTimestamp }],
@@ -272,7 +277,7 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
 
   const finalInsertOptions: InsertOptions = {
     allowNullDbValues: false,
-    onConflict: "error",
+    onConflict: "update",
     retryCount: 1,
     retryDelay: 2000,
     ...insertOptions,
@@ -295,10 +300,14 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
         const recordedBlocksEntry = recordedBlocksList.find((entry) => entry.chain === chain);
         if (!recordedBlocksEntry) {
           const errString = `No recorded blocks found for ${protocolDbName} on chain ${chain}.`;
+          console.log(errString);
           logger.error({ error: errString, keyword: "missingBlocks", protocolId: id, chain: chain });
-          throw new Error(errString);
         }
-        const { startBlock, endBlock } = await getBlocksForRunningAdapter(protocolDbName, chain, recordedBlocksEntry);
+        const { startBlock, endBlock } = await getBlocksForRunningAdapter(
+          protocolDbName,
+          chain,
+          recordedBlocksEntry ?? ({} as RecordedBlocksEntryWithChain)
+        );
         if (startBlock == null) {
           const errString = `Unable to get blocks for ${protocolDbName} adapter on chain ${chain}.`;
           logger.error({
@@ -314,7 +323,9 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
         console.log("endblock", endBlock);
 
         recordedBlockEntries.push({
-          ...recordedBlocksEntry,
+          protocolId: id,
+          chain: chain,
+          startBlock: recordedBlocksEntry?.startBlock || 0,
           endBlock: endBlock,
         });
       } catch (e) {
@@ -341,7 +352,7 @@ export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, inser
 
 export const runAllAdaptersToCurrentBlock = async (
   allowNullTxValues: boolean = false,
-  onConflict: "ignore" | "error" | "upsert" = "error"
+  onConflict: "ignore" | "update" | "upsert" = "update"
 ) => {
   const currentTimestamp = getCurrentUnixTimestamp() * 1000;
   const recordedBlocks = (
@@ -417,7 +428,7 @@ export const runAllAdaptersToCurrentBlock = async (
 
 export const runAllAdaptersTimestampRange = async (
   allowNullTxValues: boolean = false,
-  onConflict: "ignore" | "error" | "upsert" = "error",
+  onConflict: "ignore" | "update" | "upsert" = "update",
   startTimestamp: number,
   endTimestamp: number
 ) => {
@@ -539,10 +550,15 @@ export const runTroveOperationsHistorical = async (
         `${eventDataEntries.length} events were found for ${id} (${protocolDbName}-${chain}) from ${startBlockForQuery} to ${block}.`
       );
       const blockNumberList = Array.from(blockNumbers).map((blockNumber) => ({ blockNumber }));
-      await db.transaction(async (trx) => {
-        await insertEntriesFromAdapter("fetchTroveOperations", eventDataEntries, insertOptions, trx);
-        await insertBlockTimestampEntries(chain, blockNumberList, insertOptions, trx);
-      });
+      try {
+        await db.transaction(async (trx) => {
+          await insertEntriesFromAdapter("fetchTroveOperations", eventDataEntries, insertOptions, trx);
+          await insertBlockTimestampEntries(chain, blockNumberList, insertOptions, trx);
+        });
+      } catch (error) {
+        console.error("Error during trove operations transaction:", error);
+        throw error;
+      }
 
       console.log("finished inserting trove operations");
     } catch (e) {

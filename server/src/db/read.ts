@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, sql, gte, lte } from "drizzle-orm";
+import { eq, asc, desc, and, sql, gte, lte, Param } from "drizzle-orm";
 import { blockTimestamps } from "../db/schema";
 import { ChainApi } from "@defillama/sdk";
 import { CoreImmutables, TroveDataEntry, CorePoolDataEntry, RecordedBlocksEntryWithChain } from "../utils/types";
@@ -12,6 +12,7 @@ import {
   colPoolData,
   eventData,
   recordedBlocks,
+  pricesAndRates,
 } from "./schema";
 import db from "./db";
 import { withDbError } from "../utils/dbWrapper";
@@ -55,23 +56,23 @@ export async function getLatestCoreImmutables(
       const protocol = await getProtocol(protocolId, chain);
       if (!protocol) return null;
 
-      const latestCoreImmutable = await db.query.coreImmutables.findFirst({
+      // Since we now have only one record per protocol, we can just get it directly
+      const coreImmutable = await db.query.coreImmutables.findFirst({
         where: eq(coreImmutables.protocolPk, protocol.pk),
-        orderBy: [desc(coreImmutables.blockNumber)],
       });
 
-      if (!latestCoreImmutable) return null;
+      if (!coreImmutable) return null;
 
       const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
       if (!troveMgrs.length) return null;
 
-      const latestColImmutables = await Promise.all(
+      const colImmutables = await Promise.all(
         troveMgrs.map((tm) =>
           withDbError(
             async () => {
+              // Since we now have only one record per trove manager, we can just get it directly
               const colImmutable = await db.query.coreColImmutables.findFirst({
                 where: eq(coreColImmutables.troveManagerPk, tm.pk),
-                orderBy: [desc(coreColImmutables.blockNumber)],
               });
 
               if (!colImmutable) return null;
@@ -90,10 +91,11 @@ export async function getLatestCoreImmutables(
       );
 
       return {
-        boldToken: latestCoreImmutable.boldToken,
-        collateralRegistry: latestCoreImmutable.collateralRegistry,
-        interestRouter: latestCoreImmutable.interestRouter,
-        coreCollateralImmutables: latestColImmutables.filter((ci): ci is NonNullable<typeof ci> => ci !== null),
+        boldToken: coreImmutable.boldToken,
+        boldTokenSymbol: coreImmutable.boldTokenSymbol,
+        collateralRegistry: coreImmutable.collateralRegistry,
+        interestRouter: coreImmutable.interestRouter,
+        coreCollateralImmutables: colImmutables.filter((ci): ci is NonNullable<typeof ci> => ci !== null),
       };
     },
     { table: "coreImmutables", chain, protocolId }
@@ -355,5 +357,185 @@ export async function getBlocksWithMissingTimestamps(): Promise<
       }, {} as Record<string, (typeof blockTimestamps.$inferSelect)[]>);
     },
     { table: "blockTimestamps" }
+  );
+}
+
+export async function getLatestPricesAndRates(protocolId: number, chain: string, troveManagerIndex?: number) {
+  return withDbError(
+    async () => {
+      const protocol = await getProtocol(protocolId, chain);
+      if (!protocol) return null;
+
+      const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
+      if (!troveMgrs.length) return null;
+
+      const latestPricesAndRates = await Promise.all(
+        troveMgrs.map((tm) =>
+          withDbError(
+            async () => {
+              const priceData = await db.query.pricesAndRates.findFirst({
+                where: eq(pricesAndRates.troveManagerPk, tm.pk),
+                orderBy: [desc(pricesAndRates.blockNumber)],
+              });
+
+              if (!priceData) return null;
+
+              const { pk, troveManagerPk, ...formattedPriceData } = priceData;
+
+              return {
+                getTroveManagerIndex: tm.troveManagerIndex,
+                ...formattedPriceData,
+              };
+            },
+            { table: "pricesAndRates", chain, protocolId }
+          )
+        )
+      );
+
+      const maxBlock = Math.max(
+        ...latestPricesAndRates.filter((pr): pr is NonNullable<typeof pr> => pr !== null).map((pr) => pr.blockNumber)
+      );
+
+      return {
+        protocolId,
+        chain,
+        blockNumber: maxBlock,
+        pricesAndRatesData: latestPricesAndRates.filter((pr): pr is NonNullable<typeof pr> => pr !== null),
+      };
+    },
+    { table: "pricesAndRates", chain, protocolId }
+  );
+}
+
+export async function getEventsWithTimestamps(
+  protocolId: number,
+  chain: string,
+  eventNamesToFetch: string[],
+  troveManagerIndex?: number
+) {
+  return withDbError(
+    async () => {
+      const protocol = await getProtocol(protocolId, chain);
+      if (!protocol) return null;
+
+      const events = await db
+        .select({
+          blockNumber: eventData.blockNumber,
+          timestamp: blockTimestamps.timestamp,
+          eventName: eventData.eventName,
+          eventData: eventData.eventData,
+          chain: protocols.chain,
+          protocolId: protocols.protocolId,
+          troveManagerIndex: troveManagers.troveManagerIndex,
+          getTroveManagerId: troveManagers.troveManagerIndex,
+        })
+        .from(eventData)
+        .innerJoin(troveManagers, eq(eventData.troveManagerPk, troveManagers.pk))
+        .innerJoin(protocols, eq(troveManagers.protocolPk, protocols.pk))
+        .leftJoin(
+          blockTimestamps,
+          and(eq(blockTimestamps.blockNumber, eventData.blockNumber), eq(blockTimestamps.chain, protocols.chain))
+        )
+        .where(
+          and(
+            eq(protocols.protocolId, protocolId),
+            eq(protocols.chain, chain),
+            sql`${eventData.eventName} = ANY(${new Param(eventNamesToFetch)})`,
+            ...(troveManagerIndex !== undefined ? [eq(troveManagers.troveManagerIndex, troveManagerIndex)] : [])
+          )
+        )
+        .orderBy(desc(eventData.blockNumber));
+
+      const groupedEvents = events.reduce((acc, event) => {
+        const { blockNumber, timestamp } = event;
+        if (!acc[blockNumber]) {
+          acc[blockNumber] = {
+            blockNumber,
+            timestamp,
+            events: [],
+          };
+        }
+
+        acc[blockNumber].events.push({
+          eventName: event.eventName,
+          eventData: event.eventData,
+          chain: event.chain,
+          protocolId: event.protocolId,
+          getTroveManagerId: event.getTroveManagerId,
+        });
+
+        return acc;
+      }, {} as Record<number, { blockNumber: number; timestamp: number | null; events: any[] }>);
+
+      return Object.values(groupedEvents);
+    },
+    { table: "eventData", chain, protocolId }
+  );
+}
+
+export async function getProtocolDetails(protocolId: number) {
+  return withDbError(
+    async () => {
+      const protocolEntries = await db.query.protocols.findMany({
+        where: eq(protocols.protocolId, protocolId),
+      });
+
+      if (!protocolEntries.length) return null;
+
+      const name = protocolEntries[0].name;
+
+      const chains = protocolEntries.map((p) => p.chain);
+
+      const immutables: Record<string, any> = {};
+
+      for (const protocol of protocolEntries) {
+        const chain = protocol.chain;
+
+        const coreImmutableData = await db.query.coreImmutables.findFirst({
+          where: eq(coreImmutables.protocolPk, protocol.pk),
+        });
+
+        const troveMgrs = await getTroveManagersForProtocol(protocolId, chain);
+
+        const troveManagersWithCollateral = [];
+
+        for (const tm of troveMgrs) {
+          const colImmutable = await db.query.coreColImmutables.findFirst({
+            where: eq(coreColImmutables.troveManagerPk, tm.pk),
+          });
+
+          if (colImmutable) {
+            const { pk, troveManagerPk, blockNumber, ...colImmutableData } = colImmutable;
+
+            troveManagersWithCollateral.push({
+              troveManagerIndex: tm.troveManagerIndex,
+              colImmutables: {
+                ...colImmutableData,
+                collAlternativeChainAddresses: colImmutableData.collAlternativeChainAddresses as {
+                  [chain: string]: string[];
+                } | null,
+              },
+            });
+          }
+        }
+
+        if (coreImmutableData) {
+          immutables[chain] = {
+            boldToken: coreImmutableData.boldToken,
+            collateralRegistry: coreImmutableData.collateralRegistry,
+            interestRouter: coreImmutableData.interestRouter,
+            troveManagers: troveManagersWithCollateral,
+          };
+        }
+      }
+
+      return {
+        protocolId,
+        name,
+        chains,
+        immutables,
+      };
+    },
+    { table: "protocols", protocolId }
   );
 }

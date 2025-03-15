@@ -53,6 +53,7 @@ export type CoreImmutablesEntry = {
   blockNumber: number;
   chain: string;
   boldToken: string;
+  boldTokenSymbol: string | null;
   collateralRegistry: string;
   interestRouter: string;
   coreCollateralImmutables: CoreColImmutables[];
@@ -60,6 +61,7 @@ export type CoreImmutablesEntry = {
 
 export type CoreImmutables = {
   boldToken: string;
+  boldTokenSymbol: string | null;
   collateralRegistry: string;
   interestRouter: string;
   coreCollateralImmutables: CoreColImmutables[];
@@ -72,6 +74,7 @@ export type CoreColImmutables = {
   MCR: string;
   troveManager: string;
   collToken: string;
+  collTokenSymbol: string | null;
   collTokenDecimals: string;
   activePool: string;
   defaultPool: string;

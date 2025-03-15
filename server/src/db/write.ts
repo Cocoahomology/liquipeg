@@ -10,6 +10,7 @@ import {
   RecordedBlocksEntryWithChain,
   CollateralPricesAndRatesEntry,
 } from "../utils/types";
+import { protocols, troveManagers } from "./schema";
 import { eq, and, sql } from "drizzle-orm";
 import { PgTransaction } from "drizzle-orm/pg-core";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
@@ -93,7 +94,7 @@ async function insertEntries(
     trx: any,
     data: any,
     protocolPk: number,
-    onConflict: "error" | "ignore",
+    onConflict: "update" | "ignore",
     blockNumber?: number
   ) => Promise<void>,
   tableName: string,
@@ -103,7 +104,7 @@ async function insertEntries(
     allowNullDbValues = DEFAULT_INSERT_OPTIONS.allowNullDbValues ?? false,
     retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
     retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
-    onConflict = DEFAULT_INSERT_OPTIONS.onConflict ?? "error",
+    onConflict = DEFAULT_INSERT_OPTIONS.onConflict ?? "update",
   } = options;
 
   const logger = ErrorLoggerService.getInstance();
@@ -207,7 +208,7 @@ async function insertTroveData(
   trx: any,
   troveDataEntry: TroveDataEntry,
   protocolPk: number,
-  onConflict: "error" | "ignore",
+  onConflict: "update" | "ignore",
   blockNumber?: number
 ) {
   const troveDataTable = getTable("troveData");
@@ -252,7 +253,7 @@ async function insertCoreImmutables(
   trx: any,
   immutablesData: CoreImmutablesEntry,
   protocolPk: number,
-  onConflict: "error" | "ignore",
+  onConflict: "update" | "ignore",
   blockNumber?: number
 ) {
   const coreImmutablesTable = getTable("coreImmutables");
@@ -283,7 +284,24 @@ async function insertCoreImmutables(
   };
 
   try {
-    await trx.insert(coreImmutablesTable).values(coreImmutablesEntry);
+    // Insert core immutables with conflict handling for the unique constraint on protocolPk
+    if (onConflict === "ignore") {
+      await trx
+        .insert(coreImmutablesTable)
+        .values(coreImmutablesEntry)
+        .onConflictDoNothing({
+          target: [coreImmutablesTable.protocolPk],
+        });
+    } else {
+      // Update if there's a conflict - this will keep the latest data
+      await trx
+        .insert(coreImmutablesTable)
+        .values(coreImmutablesEntry)
+        .onConflictDoUpdate({
+          target: [coreImmutablesTable.protocolPk],
+          set: coreImmutablesEntry,
+        });
+    }
 
     await PromisePool.for(coreCollateralImmutables).process(async (coreColImmutables) => {
       try {
@@ -296,10 +314,24 @@ async function insertCoreImmutables(
           blockNumber,
           ...coreColImmutables,
         };
+
+        // Insert col immutables with conflict handling for the unique constraint on troveManagerPk
         if (onConflict === "ignore") {
-          await trx.insert(coreColImmutablesTable).values(colPoolDataEntry).onConflictDoNothing();
+          await trx
+            .insert(coreColImmutablesTable)
+            .values(colPoolDataEntry)
+            .onConflictDoNothing({
+              target: [coreColImmutablesTable.troveManagerPk],
+            });
         } else {
-          await trx.insert(coreColImmutablesTable).values(colPoolDataEntry);
+          // Update if there's a conflict - this will keep the latest data
+          await trx
+            .insert(coreColImmutablesTable)
+            .values(colPoolDataEntry)
+            .onConflictDoUpdate({
+              target: [coreColImmutablesTable.troveManagerPk],
+              set: colPoolDataEntry,
+            });
         }
       } catch (error) {
         if (error instanceof Error) {
@@ -322,7 +354,7 @@ async function insertCorePoolData(
   trx: any,
   poolData: CorePoolDataEntry,
   protocolPk: number,
-  onConflict: "error" | "ignore",
+  onConflict: "update" | "ignore",
   blockNumber?: number
 ) {
   const corePoolDataTable = getTable("corePoolData");
@@ -391,9 +423,10 @@ async function insertEventData(
   trx: any,
   eventData: EventDataEntry,
   protocolPk: number,
-  onConflict: "error" | "ignore"
+  onConflict: "update" | "ignore"
 ) {
   const eventDataTable = getTable("eventData");
+  const blockTimestampsTable = getTable("blockTimestamps");
   const logger = ErrorLoggerService.getInstance();
   let hasLoggedError = false;
 
@@ -409,7 +442,7 @@ async function insertEventData(
     }
   };
 
-  const { getTroveManagerIndex, protocolId, chain, ...remainingEventData } = eventData;
+  const { getTroveManagerIndex, protocolId, chain, blockNumber, ...remainingEventData } = eventData;
 
   try {
     const troveManagerPk = await getTroveManagerPk(trx, protocolPk, getTroveManagerIndex);
@@ -417,6 +450,7 @@ async function insertEventData(
     const eventDataEntry = {
       troveManagerPk: troveManagerPk,
       getTroveManagerIndex: getTroveManagerIndex,
+      blockNumber,
       ...remainingEventData,
     };
 
@@ -424,6 +458,18 @@ async function insertEventData(
       await trx.insert(eventDataTable).values(eventDataEntry).onConflictDoNothing();
     } else {
       await trx.insert(eventDataTable).values(eventDataEntry);
+    }
+
+    if (blockNumber) {
+      await trx
+        .insert(blockTimestampsTable)
+        .values({
+          chain,
+          blockNumber,
+          timestamp: null,
+          timestampMissing: true,
+        })
+        .onConflictDoNothing();
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -752,6 +798,216 @@ export async function insertPricesAndRatesEntries(
           } else throw error;
         }
       });
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
+    });
+  }
+}
+
+export async function insertSamplePointEntries(
+  samplePoints: {
+    date: Date;
+    hour: number | null;
+    targetTimestamp: number;
+    troveManagerPk?: number;
+    protocolPk?: number;
+    corePoolDataBlockNumber?: number;
+    colPoolDataBlockNumber?: number;
+    pricesAndRatesBlockNumber?: number;
+  }[],
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
+) {
+  if (!samplePoints.length) return;
+
+  const {
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
+    retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
+  } = options;
+
+  const logger = ErrorLoggerService.getInstance();
+  const troveManagerTimeSamplePointsTable = getTable("troveManagerTimeSamplePoints");
+  const protocolTimeSamplePointsTable = getTable("protocolTimeSamplePoints");
+
+  // Create a map to store chains by troveManagerPk and protocolPk
+  const chainMap = new Map<string, string>();
+
+  // Validate that each entry has either troveManagerPk or protocolPk, but not both
+  for (const entry of samplePoints) {
+    if (!entry.troveManagerPk && !entry.protocolPk) {
+      throw new Error("Sample point must have either troveManagerPk or protocolPk");
+    }
+  }
+
+  // Get chains for all troveManagerPks
+  const troveManagerPks = samplePoints.filter((entry) => entry.troveManagerPk).map((entry) => entry.troveManagerPk!);
+
+  if (troveManagerPks.length) {
+    const troveManagerChains = await db
+      .select({
+        pk: troveManagers.pk,
+        chain: protocols.chain,
+      })
+      .from(troveManagers)
+      .innerJoin(protocols, eq(troveManagers.protocolPk, protocols.pk))
+      .where(sql`${troveManagers.pk} IN ${troveManagerPks}`);
+
+    for (const { pk, chain } of troveManagerChains) {
+      chainMap.set(`tm_${pk}`, chain);
+    }
+  }
+
+  // Get chains for all protocolPks
+  const protocolPks = samplePoints.filter((entry) => entry.protocolPk).map((entry) => entry.protocolPk!);
+
+  if (protocolPks.length) {
+    const protocolChains = await db
+      .select({
+        pk: protocols.pk,
+        chain: protocols.chain,
+      })
+      .from(protocols)
+      .where(sql`${protocols.pk} IN ${protocolPks}`);
+
+    for (const { pk, chain } of protocolChains) {
+      chainMap.set(`p_${pk}`, chain);
+    }
+  }
+
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "timeSamplePoints",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const executeInserts = async (transaction: any) => {
+    // Group sample points by type (trove manager or protocol)
+    const troveManagerSamplePoints = samplePoints.filter((entry) => entry.troveManagerPk);
+    const protocolSamplePoints = samplePoints.filter((entry) => entry.protocolPk);
+
+    // Insert trove manager sample points
+    if (troveManagerSamplePoints.length > 0) {
+      await PromisePool.for(troveManagerSamplePoints)
+        .withConcurrency(20)
+        .withTaskTimeout(30000)
+        .process(async (entry) => {
+          try {
+            // Get the chain for this entry
+            const chain = chainMap.get(`tm_${entry.troveManagerPk}`);
+
+            if (!chain) {
+              throw new Error(`Could not find chain for trove manager entry: ${JSON.stringify(entry)}`);
+            }
+
+            await retry(
+              async () => {
+                await transaction
+                  .insert(troveManagerTimeSamplePointsTable)
+                  .values({
+                    chain,
+                    date: entry.date,
+                    hour: entry.hour,
+                    targetTimestamp: entry.targetTimestamp,
+                    troveManagerPk: entry.troveManagerPk,
+                    colPoolDataBlockNumber: entry.colPoolDataBlockNumber,
+                    pricesAndRatesBlockNumber: entry.pricesAndRatesBlockNumber,
+                  })
+                  .onConflictDoUpdate({
+                    target: [
+                      troveManagerTimeSamplePointsTable.date,
+                      troveManagerTimeSamplePointsTable.hour,
+                      troveManagerTimeSamplePointsTable.troveManagerPk,
+                    ],
+                    set: {
+                      targetTimestamp: entry.targetTimestamp,
+                      colPoolDataBlockNumber: entry.colPoolDataBlockNumber,
+                      pricesAndRatesBlockNumber: entry.pricesAndRatesBlockNumber,
+                    },
+                  });
+              },
+              {
+                retries: retryCount,
+                minTimeout: retryDelay,
+                onRetry: (error) => {
+                  logFirstError(error as Error, chain);
+                },
+              }
+            );
+          } catch (error) {
+            if (error instanceof Error) {
+              logFirstError(error, chainMap.get(`tm_${entry.troveManagerPk}`));
+              throw error;
+            } else throw error;
+          }
+        });
+    }
+
+    // Insert protocol sample points
+    if (protocolSamplePoints.length > 0) {
+      await PromisePool.for(protocolSamplePoints)
+        .withConcurrency(20)
+        .withTaskTimeout(30000)
+        .process(async (entry) => {
+          try {
+            // Get the chain for this entry
+            const chain = chainMap.get(`p_${entry.protocolPk}`);
+
+            if (!chain) {
+              throw new Error(`Could not find chain for protocol entry: ${JSON.stringify(entry)}`);
+            }
+
+            await retry(
+              async () => {
+                await transaction
+                  .insert(protocolTimeSamplePointsTable)
+                  .values({
+                    chain,
+                    date: entry.date,
+                    hour: entry.hour,
+                    targetTimestamp: entry.targetTimestamp,
+                    protocolPk: entry.protocolPk,
+                    corePoolDataBlockNumber: entry.corePoolDataBlockNumber,
+                  })
+                  .onConflictDoUpdate({
+                    target: [
+                      protocolTimeSamplePointsTable.date,
+                      protocolTimeSamplePointsTable.hour,
+                      protocolTimeSamplePointsTable.protocolPk,
+                    ],
+                    set: {
+                      targetTimestamp: entry.targetTimestamp,
+                      corePoolDataBlockNumber: entry.corePoolDataBlockNumber,
+                    },
+                  });
+              },
+              {
+                retries: retryCount,
+                minTimeout: retryDelay,
+                onRetry: (error) => {
+                  logFirstError(error as Error, chain);
+                },
+              }
+            );
+          } catch (error) {
+            if (error instanceof Error) {
+              logFirstError(error, chainMap.get(`p_${entry.protocolPk}`));
+              throw error;
+            } else throw error;
+          }
+        });
+    }
   };
 
   if (trx) {

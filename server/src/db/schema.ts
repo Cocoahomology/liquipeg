@@ -10,7 +10,10 @@ export const protocols = table(
     chain: d.varchar({ length: 32 }).notNull(),
     name: d.varchar({ length: 32 }),
   },
-  (protocols) => [d.unique("protocols_protocol_id_chain_unique").on(protocols.protocolId, protocols.chain)]
+  (protocols) => [
+    d.unique("protocols_protocol_id_chain_unique").on(protocols.protocolId, protocols.chain),
+    d.unique("protocols_protocol_id_name_unique").on(protocols.protocolId, protocols.name),
+  ]
 );
 
 export const troveManagers = table(
@@ -83,58 +86,46 @@ export const eventData = table(
   ]
 );
 
-export const coreImmutables = table(
-  "core_immutables",
-  {
-    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    protocolPk: d
-      .integer()
-      .references(() => protocols.pk, { onDelete: "cascade" })
-      .notNull(),
-    blockNumber: d.integer().notNull(),
-    boldToken: d.varchar({ length: 42 }).notNull(),
-    collateralRegistry: d.varchar({ length: 42 }).notNull(),
-    interestRouter: d.varchar({ length: 42 }).notNull(),
-  },
-  (coreImmutables) => [
-    d
-      .uniqueIndex("core_immutables_block_number_protocol_id_unique_idx")
-      .on(coreImmutables.blockNumber, coreImmutables.protocolPk),
-  ]
-);
+export const coreImmutables = table("core_immutables", {
+  pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+  protocolPk: d
+    .integer()
+    .references(() => protocols.pk, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  blockNumber: d.integer().notNull(),
+  boldToken: d.varchar({ length: 42 }).notNull(),
+  boldTokenSymbol: d.varchar({ length: 16 }),
+  collateralRegistry: d.varchar({ length: 42 }).notNull(),
+  interestRouter: d.varchar({ length: 42 }).notNull(),
+});
 
-export const coreColImmutables = table(
-  "core_col_immutables",
-  {
-    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    troveManagerPk: d
-      .integer()
-      .references(() => troveManagers.pk, { onDelete: "cascade" })
-      .notNull(),
-    blockNumber: d.integer().notNull(),
-    CCR: d.varchar({ length: 96 }).notNull(),
-    SCR: d.varchar({ length: 96 }).notNull(),
-    MCR: d.varchar({ length: 96 }).notNull(),
-    troveManager: d.varchar({ length: 42 }).notNull(),
-    collToken: d.varchar({ length: 42 }).notNull(),
-    collTokenDecimals: d.varchar({ length: 96 }).default("18").notNull(),
-    activePool: d.varchar({ length: 42 }).notNull(),
-    defaultPool: d.varchar({ length: 42 }).notNull(),
-    stabilityPool: d.varchar({ length: 42 }).notNull(),
-    borrowerOperationsAddress: d.varchar({ length: 42 }).notNull(),
-    sortedTroves: d.varchar({ length: 42 }).notNull(),
-    troveNFT: d.varchar({ length: 42 }).notNull(),
-    priceFeed: d.varchar({ length: 42 }),
-    isLST: d.boolean(),
-    LSTunderlying: d.varchar({ length: 42 }),
-    collAlternativeChainAddresses: d.jsonb(),
-  },
-  (coreColImmutables) => [
-    d
-      .uniqueIndex("core_col_immutables_block_number_trove_manager_id_unique_idx")
-      .on(coreColImmutables.blockNumber, coreColImmutables.troveManagerPk),
-  ]
-);
+export const coreColImmutables = table("core_col_immutables", {
+  pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+  troveManagerPk: d
+    .integer()
+    .references(() => troveManagers.pk, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  blockNumber: d.integer().notNull(),
+  CCR: d.varchar({ length: 96 }).notNull(),
+  SCR: d.varchar({ length: 96 }).notNull(),
+  MCR: d.varchar({ length: 96 }).notNull(),
+  troveManager: d.varchar({ length: 42 }).notNull(),
+  collToken: d.varchar({ length: 42 }).notNull(),
+  collTokenSymbol: d.varchar({ length: 16 }),
+  collTokenDecimals: d.varchar({ length: 96 }).default("18").notNull(),
+  activePool: d.varchar({ length: 42 }).notNull(),
+  defaultPool: d.varchar({ length: 42 }).notNull(),
+  stabilityPool: d.varchar({ length: 42 }).notNull(),
+  borrowerOperationsAddress: d.varchar({ length: 42 }).notNull(),
+  sortedTroves: d.varchar({ length: 42 }).notNull(),
+  troveNFT: d.varchar({ length: 42 }).notNull(),
+  priceFeed: d.varchar({ length: 42 }),
+  isLST: d.boolean(),
+  LSTunderlying: d.varchar({ length: 42 }),
+  collAlternativeChainAddresses: d.jsonb(),
+});
 
 export const corePoolData = table(
   "core_pool_data",
@@ -210,27 +201,6 @@ export const recordedBlocks = table(
   (recordedBlocks) => [d.unique("recorded_blocks_protocol_pk_unique").on(recordedBlocks.protocolPk)]
 );
 
-export const blockTimestamps = table(
-  "block_timestamps",
-  {
-    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
-    chain: d.varchar({ length: 32 }).notNull(),
-    blockNumber: d.integer().notNull(),
-    timestamp: d.integer(),
-    timestampMissing: d.boolean().notNull().default(true),
-  },
-  (blockTimestamps) => [
-    d
-      .uniqueIndex("block_timestamps_chain_block_number_unique_idx")
-      .on(blockTimestamps.chain, blockTimestamps.blockNumber),
-    d.index("block_timestamps_missing_idx").on(blockTimestamps.timestampMissing),
-    d.check(
-      "block_timestamps_timestamp_missing_check",
-      sql`NOT (${blockTimestamps.timestamp} IS NOT NULL AND ${blockTimestamps.timestampMissing} = true)`
-    ),
-  ]
-);
-
 export const pricesAndRates = table(
   "prices_and_rates",
   {
@@ -255,6 +225,77 @@ export const pricesAndRates = table(
   ]
 );
 
+// FIX: consider removing...just needed for eventData I guess
+export const blockTimestamps = table(
+  "block_timestamps",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    chain: d.varchar({ length: 32 }).notNull(),
+    blockNumber: d.integer().notNull(),
+    timestamp: d.integer(),
+    timestampMissing: d.boolean().notNull().default(true),
+  },
+  (blockTimestamps) => [
+    d
+      .uniqueIndex("block_timestamps_chain_block_number_unique_idx")
+      .on(blockTimestamps.chain, blockTimestamps.blockNumber),
+    d.index("block_timestamps_missing_idx").on(blockTimestamps.timestampMissing),
+    d.check(
+      "block_timestamps_timestamp_missing_check",
+      sql`NOT (${blockTimestamps.timestamp} IS NOT NULL AND ${blockTimestamps.timestampMissing} = true)`
+    ),
+  ]
+);
+
+export const troveManagerTimeSamplePoints = table(
+  "trove_manager_time_sample_points",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    chain: d.varchar({ length: 32 }).notNull(),
+    date: d.date().notNull(), // The date this sample represents
+    hour: d.integer(), // null for daily points, 1-23 for hourly points
+    troveManagerPk: d
+      .integer()
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
+      .notNull(),
+    colPoolDataBlockNumber: d.integer(),
+    pricesAndRatesBlockNumber: d.integer(),
+    targetTimestamp: d.integer().notNull(), // The exact timestamp we're targeting
+  },
+  (troveManagerTimeSamplePoints) => [
+    // Unique constraint for trove-manager-specific samples
+    d
+      .uniqueIndex("trove_manager_time_sample_points_date_hour_tm_unique_idx")
+      .on(
+        troveManagerTimeSamplePoints.date,
+        troveManagerTimeSamplePoints.hour,
+        troveManagerTimeSamplePoints.troveManagerPk
+      ),
+  ]
+);
+
+export const protocolTimeSamplePoints = table(
+  "protocol_time_sample_points",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    chain: d.varchar({ length: 32 }).notNull(),
+    date: d.date().notNull(), // The date this sample represents
+    hour: d.integer(), // null for daily points, 1-23 for hourly points
+    protocolPk: d
+      .integer()
+      .references(() => protocols.pk, { onDelete: "cascade" })
+      .notNull(),
+    corePoolDataBlockNumber: d.integer(),
+    targetTimestamp: d.integer().notNull(), // The exact timestamp we're targeting
+  },
+  (protocolTimeSamplePoints) => [
+    // Unique constraint for protocol-specific samples
+    d
+      .uniqueIndex("protocol_time_sample_points_date_hour_protocol_unique_idx")
+      .on(protocolTimeSamplePoints.date, protocolTimeSamplePoints.hour, protocolTimeSamplePoints.protocolPk),
+  ]
+);
+
 export const protocolsRelations = relations(protocols, ({ one, many }) => ({
   troveManagers: one(troveManagers, {
     fields: [protocols.pk],
@@ -273,6 +314,7 @@ export const protocolsRelations = relations(protocols, ({ one, many }) => ({
     references: [recordedBlocks.protocolPk],
   }),
   pricesAndRates: many(pricesAndRates),
+  protocolTimeSamplePoints: many(protocolTimeSamplePoints),
 }));
 
 export const troveManagerRelations = relations(troveManagers, ({ one, many }) => ({
@@ -291,6 +333,7 @@ export const troveManagerRelations = relations(troveManagers, ({ one, many }) =>
     references: [colPoolData.troveManagerPk],
   }),
   pricesAndRates: many(pricesAndRates),
+  troveManagerTimeSamplePoints: many(troveManagerTimeSamplePoints),
 }));
 
 export const troveDataRelations = relations(troveData, ({ one }) => ({
@@ -342,6 +385,20 @@ export const pricesAndRatesRelations = relations(pricesAndRates, ({ one }) => ({
   }),
 }));
 
+export const troveManagerTimeSamplePointsRelations = relations(troveManagerTimeSamplePoints, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [troveManagerTimeSamplePoints.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
+export const protocolTimeSamplePointsRelations = relations(protocolTimeSamplePoints, ({ one }) => ({
+  protocol: one(protocols, {
+    fields: [protocolTimeSamplePoints.protocolPk],
+    references: [protocols.pk],
+  }),
+}));
+
 const tables = {
   protocols,
   troveManagers,
@@ -355,6 +412,8 @@ const tables = {
   recordedBlocks,
   blockTimestamps,
   pricesAndRates,
+  troveManagerTimeSamplePoints,
+  protocolTimeSamplePoints,
 };
 
 export type TableName =
@@ -369,7 +428,9 @@ export type TableName =
   | "errorLogs"
   | "recordedBlocks"
   | "blockTimestamps"
-  | "pricesAndRates";
+  | "pricesAndRates"
+  | "troveManagerTimeSamplePoints"
+  | "protocolTimeSamplePoints";
 
 export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];
