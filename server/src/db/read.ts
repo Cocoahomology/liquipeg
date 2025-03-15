@@ -13,6 +13,7 @@ import {
   eventData,
   recordedBlocks,
   pricesAndRates,
+  troveManagerTimeSamplePoints,
 } from "./schema";
 import db from "./db";
 import { withDbError } from "../utils/dbWrapper";
@@ -561,5 +562,204 @@ export async function getProtocolDetails(protocolId: number) {
       };
     },
     { table: "protocols", protocolId }
+  );
+}
+
+export async function getDailyPricesAndRates(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex: number,
+  startTimestamp?: number,
+  endTimestamp?: number,
+  replaceLastEntryWithHourly: boolean = false
+) {
+  return withDbError(
+    async () => {
+      const protocol = await getProtocol(protocolId, chain);
+      if (!protocol) return null;
+
+      // Default values for timestamps
+      let queryStartTimestamp: number;
+      let queryEndTimestamp: number = endTimestamp ?? Math.floor(Date.now() / 1000);
+
+      // If no startTimestamp provided, get the earliest sample point timestamp
+      if (startTimestamp === undefined) {
+        const earliestSample = await db
+          .select({ targetTimestamp: troveManagerTimeSamplePoints.targetTimestamp })
+          .from(troveManagerTimeSamplePoints)
+          .where(eq(troveManagerTimeSamplePoints.chain, chain))
+          .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp))
+          .limit(1);
+
+        if (!earliestSample.length) return null;
+        queryStartTimestamp = earliestSample[0].targetTimestamp;
+      } else {
+        queryStartTimestamp = startTimestamp;
+      }
+
+      // Get the specified trove manager for this protocol
+      const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
+      if (!troveMgrs.length) return null;
+
+      const troveMgr = troveMgrs[0]; // We expect only one trove manager since we filtered by index
+
+      // Get all sample dates for this trove manager
+      const uniqueDates = await db
+        .selectDistinct({
+          timestamp: troveManagerTimeSamplePoints.targetTimestamp,
+          date: troveManagerTimeSamplePoints.date,
+        })
+        .from(troveManagerTimeSamplePoints)
+        .where(
+          and(
+            eq(troveManagerTimeSamplePoints.chain, chain),
+            eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk),
+            eq(troveManagerTimeSamplePoints.hour, 0), // Only get daily points
+            gte(troveManagerTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+            lte(troveManagerTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+          )
+        )
+        .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp));
+
+      // Get all sample points for this trove manager within the timestamp range
+      const samplePoints = await db
+        .select({
+          timestamp: troveManagerTimeSamplePoints.targetTimestamp,
+          date: troveManagerTimeSamplePoints.date,
+          pricesAndRatesBlockNumber: troveManagerTimeSamplePoints.pricesAndRatesBlockNumber,
+        })
+        .from(troveManagerTimeSamplePoints)
+        .where(
+          and(
+            eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk),
+            eq(troveManagerTimeSamplePoints.hour, 0), // Only get daily points
+            gte(troveManagerTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+            lte(troveManagerTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+          )
+        )
+        .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp));
+
+      // Filter out sample points without block numbers
+      const validSamplePoints = samplePoints.filter((sample) => sample.pricesAndRatesBlockNumber !== null);
+      if (validSamplePoints.length === 0) {
+        // Return the structure with empty data if no valid points
+        return {
+          protocolId,
+          chain,
+          troveManagerIndex,
+          dates: uniqueDates,
+          priceData: {},
+        };
+      }
+
+      const blockNumbers = validSamplePoints.map((sample) => sample.pricesAndRatesBlockNumber as number);
+
+      // Get all prices and rates with a single query
+      const allPriceData = await db
+        .select({
+          blockNumber: pricesAndRates.blockNumber,
+          colUSDPriceFeed: pricesAndRates.colUSDPriceFeed,
+          colUSDOracle: pricesAndRates.colUSDOracle,
+          LSTUnderlyingCanonicalRate: pricesAndRates.LSTUnderlyingCanonicalRate,
+          LSTUnderlyingMarketRate: pricesAndRates.LSTUnderlyingMarketRate,
+          underlyingUSDOracle: pricesAndRates.underlyingUSDOracle,
+          deviation: pricesAndRates.deviation,
+          redemptionRelatedOracles: pricesAndRates.redemptionRelatedOracles,
+          timestamp: blockTimestamps.timestamp,
+        })
+        .from(pricesAndRates)
+        .where(
+          and(
+            eq(pricesAndRates.troveManagerPk, troveMgr.pk),
+            sql`${pricesAndRates.blockNumber} = ANY(${new Param(blockNumbers)})`
+          )
+        )
+        .leftJoin(
+          blockTimestamps,
+          and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
+        );
+
+      // Create a lookup map for fast access
+      const priceDataByBlock: Record<number, any> = {};
+      allPriceData.forEach((priceData) => {
+        priceDataByBlock[priceData.blockNumber] = priceData;
+      });
+
+      // Create a mapping of timestamp to price data for easier lookup
+      const priceDataByTimestamp: Record<number, any> = {};
+      validSamplePoints.forEach((sample) => {
+        const { timestamp } = sample;
+        const blockNumber = sample.pricesAndRatesBlockNumber as number;
+        const priceData = priceDataByBlock[blockNumber];
+        if (priceData) {
+          priceDataByTimestamp[timestamp] = priceData;
+        }
+      });
+
+      // If replaceLastEntryWithHourly is true, find and replace the most recent daily entry with the most recent hourly entry
+      if (replaceLastEntryWithHourly && uniqueDates.length > 0) {
+        // Find the latest hourly entry
+        const latestHourlySample = await db
+          .select({
+            targetTimestamp: troveManagerTimeSamplePoints.targetTimestamp,
+            date: troveManagerTimeSamplePoints.date,
+            hour: troveManagerTimeSamplePoints.hour,
+            pricesAndRatesBlockNumber: troveManagerTimeSamplePoints.pricesAndRatesBlockNumber,
+          })
+          .from(troveManagerTimeSamplePoints)
+          .where(and(eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk)))
+          .orderBy(desc(troveManagerTimeSamplePoints.targetTimestamp))
+          .limit(1);
+
+        if (latestHourlySample.length > 0 && latestHourlySample[0].pricesAndRatesBlockNumber) {
+          const samplePoint = latestHourlySample[0];
+          const blockNumber = samplePoint.pricesAndRatesBlockNumber as number;
+
+          if (blockNumber !== null) {
+            // Get the price data for this hourly sample
+            const hourlySamplePriceData = await db
+              .select({
+                blockNumber: pricesAndRates.blockNumber,
+                colUSDPriceFeed: pricesAndRates.colUSDPriceFeed,
+                colUSDOracle: pricesAndRates.colUSDOracle,
+                LSTUnderlyingCanonicalRate: pricesAndRates.LSTUnderlyingCanonicalRate,
+                LSTUnderlyingMarketRate: pricesAndRates.LSTUnderlyingMarketRate,
+                underlyingUSDOracle: pricesAndRates.underlyingUSDOracle,
+                deviation: pricesAndRates.deviation,
+                redemptionRelatedOracles: pricesAndRates.redemptionRelatedOracles,
+                timestamp: blockTimestamps.timestamp,
+              })
+              .from(pricesAndRates)
+              .where(eq(pricesAndRates.blockNumber, blockNumber))
+              .leftJoin(
+                blockTimestamps,
+                and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
+              )
+              .limit(1);
+
+            if (hourlySamplePriceData.length > 0) {
+              // Get the latest entry in our collected data
+              const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
+
+              // Update uniqueDates with the hourly timestamp
+              uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
+
+              // Delete the old timestamp key and add the new one
+              delete priceDataByTimestamp[latestTimestamp];
+              priceDataByTimestamp[samplePoint.targetTimestamp] = hourlySamplePriceData[0];
+            }
+          }
+        }
+      }
+
+      return {
+        protocolId,
+        chain,
+        troveManagerIndex,
+        dates: uniqueDates,
+        priceData: priceDataByTimestamp,
+      };
+    },
+    { table: "troveManagerTimeSamplePoints", chain, protocolId }
   );
 }
