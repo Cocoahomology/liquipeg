@@ -5,7 +5,7 @@ import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManag
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
 import { getLatestCoreImmutables } from "../../db/read";
 import { PromisePool } from "@supercharge/promise-pool";
-import { getCollateralConfig } from "../../collateralConfig";
+import { getCollateralConfig, getProtocolConfig } from "../../collateralConfig";
 
 const abi = {
   Troves:
@@ -289,9 +289,12 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       })
     );
 
+    const protocolConfig = getProtocolConfig(protocolId, api.chain);
+
     return {
       boldToken: boldToken,
       boldTokenSymbol: boldTokenSymbol,
+      nativeToken: protocolConfig.nativeToken ?? null,
       collateralRegistry: colRegistryAddress,
       interestRouter: accInterestRouterList[0],
       coreCollateralImmutables: coreCollateralImmutablesList,

@@ -82,7 +82,7 @@ export async function getLatestCoreImmutables(
                 colImmutable;
               return {
                 troveManagerIndex: tm.troveManagerIndex,
-                collAlternativeChainAddresses: collAlternativeChainAddresses as { [chain: string]: string[] } | null,
+                collAlternativeChainAddresses: collAlternativeChainAddresses as string[] | null,
                 ...colImmutableData,
               };
             },
@@ -94,6 +94,7 @@ export async function getLatestCoreImmutables(
       return {
         boldToken: coreImmutable.boldToken,
         boldTokenSymbol: coreImmutable.boldTokenSymbol,
+        nativeToken: coreImmutable.nativeToken,
         collateralRegistry: coreImmutable.collateralRegistry,
         interestRouter: coreImmutable.interestRouter,
         coreCollateralImmutables: colImmutables.filter((ci): ci is NonNullable<typeof ci> => ci !== null),
@@ -542,9 +543,7 @@ export async function getProtocolDetails(protocolId: number) {
               troveManagerIndex: tm.troveManagerIndex,
               colImmutables: {
                 ...colImmutableData,
-                collAlternativeChainAddresses: colImmutableData.collAlternativeChainAddresses as {
-                  [chain: string]: string[];
-                } | null,
+                collAlternativeChainAddresses: colImmutableData.collAlternativeChainAddresses as string[] | null,
               },
             });
           }

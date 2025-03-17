@@ -101,6 +101,7 @@ export const coreImmutables = table("core_immutables", {
   blockNumber: d.integer().notNull(),
   boldToken: d.varchar({ length: 42 }).notNull(),
   boldTokenSymbol: d.varchar({ length: 16 }),
+  nativeToken: d.varchar({ length: 42 }),
   collateralRegistry: d.varchar({ length: 42 }).notNull(),
   interestRouter: d.varchar({ length: 42 }).notNull(),
 });
@@ -129,7 +130,7 @@ export const coreColImmutables = table("core_col_immutables", {
   priceFeed: d.varchar({ length: 42 }),
   isLST: d.boolean(),
   LSTunderlying: d.varchar({ length: 42 }),
-  collAlternativeChainAddresses: d.jsonb(),
+  collAlternativeChainAddresses: d.text().array(),
 });
 
 export const corePoolData = table(

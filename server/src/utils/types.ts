@@ -56,6 +56,7 @@ export type CoreImmutablesEntry = {
   chain: string;
   boldToken: string;
   boldTokenSymbol: string | null;
+  nativeToken: string | null;
   collateralRegistry: string;
   interestRouter: string;
   coreCollateralImmutables: CoreColImmutables[];
@@ -64,6 +65,7 @@ export type CoreImmutablesEntry = {
 export type CoreImmutables = {
   boldToken: string;
   boldTokenSymbol: string | null;
+  nativeToken: string | null;
   collateralRegistry: string;
   interestRouter: string;
   coreCollateralImmutables: CoreColImmutables[];
@@ -87,7 +89,7 @@ export type CoreColImmutables = {
   priceFeed: string | null;
   isLST: boolean | null;
   LSTunderlying: string | null;
-  collAlternativeChainAddresses: { [chain: string]: string[] } | null;
+  collAlternativeChainAddresses: string[] | null;
 };
 
 export type CorePoolDataEntry = {

@@ -276,14 +276,12 @@ async function insertCoreImmutables(
     }
   };
 
-  const { boldToken, collateralRegistry, interestRouter, coreCollateralImmutables, chain } = immutablesData;
+  const { coreCollateralImmutables, chain } = immutablesData;
 
   const coreImmutablesEntry = {
+    ...immutablesData,
     protocolPk: protocolPk,
     blockNumber: blockNumber,
-    boldToken: boldToken,
-    collateralRegistry: collateralRegistry,
-    interestRouter: interestRouter,
   };
 
   try {

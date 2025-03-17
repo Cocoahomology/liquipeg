@@ -1,5 +1,3 @@
-import { CollateralPricesAndRates } from "./utils/types";
-
 export type CollateralConfig = {
   isLST?: boolean;
   rateProviderAddress?: string;
@@ -18,9 +16,7 @@ export type CollateralConfig = {
   creationCodeMapping?: {
     [key in OraclePurpose]?: OracleCreationCode;
   };
-  collAlternativeChainAddresses?: {
-    [chain: string]: string[];
-  };
+  collAlternativeChainAddresses?: string[];
 };
 
 export type OracleAddress = { address: string; oracleType: OracleType };
@@ -35,6 +31,18 @@ type ProtocolCollateralConfig = {
   [protocolIdChain: string]: {
     [troveManagerIndex: number]: CollateralConfig;
   };
+};
+
+type ProtocolConfig = {
+  [protocolIdChain: string]: {
+    nativeToken: string | null;
+  };
+};
+
+export const protocolConfigs: ProtocolConfig = {
+  "1-ethereum": {
+    nativeToken: "0x6dea81c8171d0ba574754ef6f8b412f2ed88c54d",
+  },
 };
 
 export const collateralConfigs: ProtocolCollateralConfig = {
@@ -72,9 +80,7 @@ export const collateralConfigs: ProtocolCollateralConfig = {
       deviationFormula: "LSTUnderlyingCanonicalRate-LSTUnderlyingMarketRate",
       deviationThreshold: "20000000000000000",
       LSTUnderlyingCanonicalRateAbi: "uint256:getExchangeRate",
-      collAlternativeChainAddresses: {
-        bsc: ["0x2170Ed0880ac9A755fd29B2688956BD959F933F8"],
-      },
+      collAlternativeChainAddresses: ["bsc:0x2170Ed0880ac9A755fd29B2688956BD959F933F8"],
       underlyingUSDOracle: { address: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419", oracleType: "chainlink" },
       LSTUnderlyingMarketRateOracle: { address: "0x536218f9E9Eb48863970252233c8F271f554C2d0", oracleType: "chainlink" },
     },
@@ -85,4 +91,10 @@ export function getCollateralConfig(protocolId: number, chain: string, troveMana
   const defaultConfig: CollateralConfig = {};
 
   return collateralConfigs[`${protocolId}-${chain}`]?.[troveManagerIndex] ?? defaultConfig;
+}
+
+export function getProtocolConfig(protocolId: number, chain: string) {
+  const defaultConfig = { nativeToken: null };
+
+  return protocolConfigs[`${protocolId}-${chain}`] ?? defaultConfig;
 }
