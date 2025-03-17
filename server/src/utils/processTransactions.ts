@@ -320,6 +320,7 @@ export const getEvmEventLogs = async (
           chain: String(api.chain || ""),
           eventName: String(eventName || ""),
           logIndex: Number(event.logIndex || 0),
+          operation: null,
           eventData: event.log || {},
         };
         eventData.push(eventEntry);

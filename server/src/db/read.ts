@@ -258,6 +258,7 @@ export async function getEventData(protocolId: number, chain: string, eventName?
           txHash: eventData.txHash,
           logIndex: eventData.logIndex,
           eventName: eventData.eventName,
+          operation: eventData.operation,
           eventData: eventData.eventData,
         })
         .from(eventData)
@@ -435,7 +436,8 @@ export async function getLatestPricesAndRates(protocolId: number, chain: string,
 export async function getEventsWithTimestamps(
   protocolId: number,
   chain: string,
-  eventNamesToFetch: string[],
+  operations?: number[],
+  eventNamesToFetch?: string[],
   troveManagerIndex?: number
 ) {
   return withDbError(
@@ -443,16 +445,25 @@ export async function getEventsWithTimestamps(
       const protocol = await getProtocol(protocolId, chain);
       if (!protocol) return null;
 
+      const conditions = [
+        eq(protocols.protocolId, protocolId),
+        eq(protocols.chain, chain),
+        ...(eventNamesToFetch ? [sql`${eventData.eventName} = ANY(${new Param(eventNamesToFetch)})`] : []),
+        ...(operations ? [sql`${eventData.operation} = ANY(${new Param(operations)})`] : []),
+        ...(troveManagerIndex !== undefined ? [eq(troveManagers.troveManagerIndex, troveManagerIndex)] : []),
+      ];
+
       const events = await db
         .select({
           blockNumber: eventData.blockNumber,
           timestamp: blockTimestamps.timestamp,
+          protocolId: protocols.protocolId,
+          chain: protocols.chain,
           eventName: eventData.eventName,
           eventData: eventData.eventData,
-          chain: protocols.chain,
-          protocolId: protocols.protocolId,
           troveManagerIndex: troveManagers.troveManagerIndex,
-          getTroveManagerId: troveManagers.troveManagerIndex,
+          txHash: eventData.txHash,
+          operation: eventData.operation,
         })
         .from(eventData)
         .innerJoin(troveManagers, eq(eventData.troveManagerPk, troveManagers.pk))
@@ -461,14 +472,7 @@ export async function getEventsWithTimestamps(
           blockTimestamps,
           and(eq(blockTimestamps.blockNumber, eventData.blockNumber), eq(blockTimestamps.chain, protocols.chain))
         )
-        .where(
-          and(
-            eq(protocols.protocolId, protocolId),
-            eq(protocols.chain, chain),
-            sql`${eventData.eventName} = ANY(${new Param(eventNamesToFetch)})`,
-            ...(troveManagerIndex !== undefined ? [eq(troveManagers.troveManagerIndex, troveManagerIndex)] : [])
-          )
-        )
+        .where(and(...conditions))
         .orderBy(desc(eventData.blockNumber));
 
       const groupedEvents = events.reduce((acc, event) => {
@@ -482,11 +486,13 @@ export async function getEventsWithTimestamps(
         }
 
         acc[blockNumber].events.push({
-          eventName: event.eventName,
-          eventData: event.eventData,
           chain: event.chain,
           protocolId: event.protocolId,
-          getTroveManagerId: event.getTroveManagerId,
+          txHash: event.txHash,
+          troveManagerIndex: event.troveManagerIndex,
+          operation: event.operation,
+          eventName: event.eventName,
+          eventData: event.eventData,
         });
 
         return acc;
@@ -578,7 +584,6 @@ export async function getDailyPricesAndRates(
       const protocol = await getProtocol(protocolId, chain);
       if (!protocol) return null;
 
-      // Default values for timestamps
       let queryStartTimestamp: number;
       let queryEndTimestamp: number = endTimestamp ?? Math.floor(Date.now() / 1000);
 
@@ -597,11 +602,10 @@ export async function getDailyPricesAndRates(
         queryStartTimestamp = startTimestamp;
       }
 
-      // Get the specified trove manager for this protocol
       const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
       if (!troveMgrs.length) return null;
 
-      const troveMgr = troveMgrs[0]; // We expect only one trove manager since we filtered by index
+      const troveMgr = troveMgrs[0];
 
       // Get all sample dates for this trove manager
       const uniqueDates = await db
@@ -642,7 +646,6 @@ export async function getDailyPricesAndRates(
       // Filter out sample points without block numbers
       const validSamplePoints = samplePoints.filter((sample) => sample.pricesAndRatesBlockNumber !== null);
       if (validSamplePoints.length === 0) {
-        // Return the structure with empty data if no valid points
         return {
           protocolId,
           chain,
@@ -654,7 +657,6 @@ export async function getDailyPricesAndRates(
 
       const blockNumbers = validSamplePoints.map((sample) => sample.pricesAndRatesBlockNumber as number);
 
-      // Get all prices and rates with a single query
       const allPriceData = await db
         .select({
           blockNumber: pricesAndRates.blockNumber,
@@ -698,7 +700,6 @@ export async function getDailyPricesAndRates(
 
       // If replaceLastEntryWithHourly is true, find and replace the most recent daily entry with the most recent hourly entry
       if (replaceLastEntryWithHourly && uniqueDates.length > 0) {
-        // Find the latest hourly entry
         const latestHourlySample = await db
           .select({
             targetTimestamp: troveManagerTimeSamplePoints.targetTimestamp,
@@ -716,7 +717,6 @@ export async function getDailyPricesAndRates(
           const blockNumber = samplePoint.pricesAndRatesBlockNumber as number;
 
           if (blockNumber !== null) {
-            // Get the price data for this hourly sample
             const hourlySamplePriceData = await db
               .select({
                 blockNumber: pricesAndRates.blockNumber,
@@ -738,13 +738,10 @@ export async function getDailyPricesAndRates(
               .limit(1);
 
             if (hourlySamplePriceData.length > 0) {
-              // Get the latest entry in our collected data
               const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
 
-              // Update uniqueDates with the hourly timestamp
               uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
 
-              // Delete the old timestamp key and add the new one
               delete priceDataByTimestamp[latestTimestamp];
               priceDataByTimestamp[samplePoint.targetTimestamp] = hourlySamplePriceData[0];
             }

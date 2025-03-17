@@ -35,6 +35,7 @@ export type EventDataEntry = {
   txHash: string;
   logIndex: number;
   eventName: string;
+  operation: number | null;
   eventData: object; // FIX
 };
 
@@ -45,6 +46,7 @@ export type EventData = {
   txHash: string;
   logIndex: number;
   eventName: string;
+  operation: number | null;
   eventData: object; // FIX
 };
 
@@ -115,8 +117,9 @@ export type ColPoolData = {
   calcPendingAggInterest: string;
   calcPendingSPYield: string;
   lastAggUpdateTime: string;
-  // stability pool:
-  getCollBalance: string;
+  getCollBalanceActivePool: string;
+  getCollBalanceDefaultPool: string;
+  getCollBalanceStabilityPool: string;
   getTotalBoldDeposits: string;
   getYieldGainsOwed: string;
   getYieldGainsPending: string;

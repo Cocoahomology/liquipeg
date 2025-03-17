@@ -329,6 +329,9 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
     const activePoolList = coreCollateralImmutablesValues.map(
       (collateralImmutables) => collateralImmutables.activePool
     );
+    const defaultPoolList = coreCollateralImmutablesValues.map(
+      (collateralImmutables) => collateralImmutables.defaultPool
+    );
     const stabilityPoolList = coreCollateralImmutablesValues.map(
       (collateralImmutables) => collateralImmutables.stabilityPool
     );
@@ -342,7 +345,9 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
       calcPendingAggInterest,
       calcPendingSPYield,
       lastAggUpdateTime,
-      getCollBalance,
+      getCollBalanceActivePool,
+      getCollBalanceDefaultPool,
+      getCollBalanceStabilityPool,
       getTotalBoldDeposits,
       getYieldGainsOwed,
       getYieldGainsPending,
@@ -372,6 +377,12 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
         .multiCall({ abi: "uint256:lastAggUpdateTime", calls: activePoolList })
         .then((res) => res.map((item) => String(item))),
       api
+        .multiCall({ abi: "uint256:getCollBalance", calls: activePoolList })
+        .then((res) => res.map((item) => String(item))),
+      api
+        .multiCall({ abi: "uint256:getCollBalance", calls: defaultPoolList })
+        .then((res) => res.map((item) => String(item))),
+      api
         .multiCall({ abi: "uint256:getCollBalance", calls: stabilityPoolList })
         .then((res) => res.map((item) => String(item))),
       api
@@ -398,7 +409,9 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
         calcPendingAggInterest: calcPendingAggInterest[i],
         calcPendingSPYield: calcPendingSPYield[i],
         lastAggUpdateTime: lastAggUpdateTime[i],
-        getCollBalance: getCollBalance[i],
+        getCollBalanceActivePool: getCollBalanceActivePool[i],
+        getCollBalanceDefaultPool: getCollBalanceDefaultPool[i],
+        getCollBalanceStabilityPool: getCollBalanceStabilityPool[i],
         getTotalBoldDeposits: getTotalBoldDeposits[i],
         getYieldGainsOwed: getYieldGainsOwed[i],
         getYieldGainsPending: getYieldGainsPending[i],

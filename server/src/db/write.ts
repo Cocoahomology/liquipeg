@@ -45,11 +45,14 @@ export async function insertEntriesFromAdapter(
 }
 
 function validateRows(rows: any[], allowNullDbValues: boolean) {
+  // Define keys that are allowed to be null
+  const allowedNullKeys = ["operation"];
+
   const logger = ErrorLoggerService.getInstance();
   if (!allowNullDbValues) {
     for (const row of rows) {
       for (const key in row) {
-        if (row[key] == null || row[key] === "") {
+        if ((row[key] == null || row[key] === "") && !allowedNullKeys.includes(key)) {
           const error = new Error(`Null value found in row for key: ${key}`);
           logger.error({
             error: error.message,
@@ -442,16 +445,22 @@ async function insertEventData(
     }
   };
 
-  const { troveManagerIndex, protocolId, chain, blockNumber, ...remainingEventData } = eventData;
+  const { troveManagerIndex, protocolId, chain, blockNumber, eventName, ...remainingEventData } = eventData;
 
   try {
     const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
+    let operation = undefined;
+    if (eventName === "TroveOperation" && remainingEventData.eventData) {
+      operation = (remainingEventData.eventData as { operation?: string }).operation;
+    }
 
     const eventDataEntry = {
       troveManagerPk: troveManagerPk,
       troveManagerIndex: troveManagerIndex,
       blockNumber,
+      eventName,
       ...remainingEventData,
+      operation,
     };
 
     if (onConflict === "ignore") {

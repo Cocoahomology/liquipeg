@@ -78,11 +78,16 @@ export const eventData = table(
     txHash: d.varchar({ length: 66 }).notNull(),
     logIndex: d.integer().notNull(),
     eventName: d.varchar({ length: 128 }).notNull(),
+    operation: d.integer(),
     eventData: d.jsonb().notNull(), // Fix: eventually normalize
   },
   (eventData) => [
     d.index("event_data_block_number_event_name_idx").on(eventData.blockNumber, eventData.eventName),
     d.unique("event_data_row_unique").on(eventData.txHash, eventData.eventName, eventData.logIndex),
+    d.check(
+      "event_data_operation_check",
+      sql`${eventData.operation} IS NULL OR (${eventData.operation} >= 0 AND ${eventData.operation} <= 9)`
+    ),
   ]
 );
 
@@ -164,7 +169,9 @@ export const colPoolData = table(
     calcPendingAggInterest: d.varchar({ length: 96 }).notNull(),
     calcPendingSPYield: d.varchar({ length: 96 }).notNull(),
     lastAggUpdateTime: d.varchar({ length: 96 }).notNull(),
-    getCollBalance: d.varchar({ length: 96 }).notNull(),
+    getCollBalanceActivePool: d.varchar({ length: 96 }).notNull(),
+    getCollBalanceDefaultPool: d.varchar({ length: 96 }).notNull(),
+    getCollBalanceStabilityPool: d.varchar({ length: 96 }).notNull(),
     getTotalBoldDeposits: d.varchar({ length: 96 }).notNull(),
     getYieldGainsOwed: d.varchar({ length: 96 }).notNull(),
     getYieldGainsPending: d.varchar({ length: 96 }).notNull(),
@@ -225,7 +232,7 @@ export const pricesAndRates = table(
   ]
 );
 
-// FIX: consider removing...just needed for eventData I guess
+// FIX: consider removing...used for eventData, pricesAndRates?
 export const blockTimestamps = table(
   "block_timestamps",
   {
