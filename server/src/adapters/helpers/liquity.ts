@@ -11,6 +11,8 @@ const abi = {
   Troves:
     "function Troves(uint256) view returns (uint256 debt, uint256 coll, uint256 stake, uint8 status, uint64 arrayIndex, uint64 lastDebtUpdateTime, uint64 lastInterestRateAdjTime, uint256 annualInterestRate, address interestBatchManager, uint256 batchDebtShares)",
   getTroveFromTroveIdsArray: "function getTroveFromTroveIdsArray(uint256 _index) view returns (uint256)",
+  getLatestTroveData:
+    "function getLatestTroveData(uint256 _troveId) view returns (uint256 entireDebt, uint256 entireColl, uint256 redistBoldDebtGain, uint256 redistCollGain, uint256 accruedInterest, uint256 recordedDebt, uint256 annualInterestRate, uint256 weightedRecordedDebt, uint256 accruedBatchManagementFee, uint256 lastInterestRateAdjTime)",
 };
 
 export function getTrovesByColRegistry(colRegistryAddress: string) {
@@ -47,6 +49,12 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             return { target: troveManagersList[index], params: troveId };
           }),
         })) as { [prop: string]: number }[];
+        const latestTroveData = (await api.multiCall({
+          abi: abi.getLatestTroveData,
+          calls: troveIds.map((troveId) => {
+            return { target: troveManagersList[index], params: troveId };
+          }),
+        })) as { [prop: string]: number }[];
         const formattedTroveData = troveData.map((data, index) => {
           const {
             debt,
@@ -60,8 +68,10 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             interestBatchManager,
             batchDebtShares,
           } = data;
+          const { entireDebt, accruedInterest } = latestTroveData[index];
           return {
             troveId: String(troveIds[index]),
+            entireDebt: String(entireDebt),
             debt: String(debt),
             coll: String(coll),
             stake: String(stake),
@@ -70,6 +80,7 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             lastDebtUpdateTime: String(lastDebtUpdateTime),
             lastInterestRateAdjTime: String(lastInterestRateAdjTime),
             annualInterestRate: String(annualInterestRate),
+            accruedInterest: String(accruedInterest),
             interestBatchManager: String(interestBatchManager),
             batchDebtShares: String(batchDebtShares),
           };

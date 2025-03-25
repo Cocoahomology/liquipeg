@@ -44,6 +44,7 @@ export const troveData = table(
       .references(() => troveManagers.pk, { onDelete: "cascade" })
       .notNull(),
     debt: d.varchar({ length: 96 }).notNull(),
+    entireDebt: d.varchar({ length: 96 }).notNull(),
     coll: d.varchar({ length: 96 }).notNull(),
     stake: d.varchar({ length: 96 }).notNull(),
     /* Status: 0=nonExistent, 1=active, 2=closedByOwner, 3=closedByLiquidation, 4=zombie */
@@ -52,6 +53,7 @@ export const troveData = table(
     lastDebtUpdateTime: d.varchar({ length: 96 }).notNull(),
     lastInterestRateAdjTime: d.varchar({ length: 96 }).notNull(),
     annualInterestRate: d.varchar({ length: 96 }).notNull(),
+    accruedInterest: d.varchar({ length: 96 }).notNull(),
     interestBatchManager: d.varchar({ length: 42 }).notNull(),
     batchDebtShares: d.varchar({ length: 96 }).notNull(),
   },
@@ -271,7 +273,6 @@ export const troveManagerTimeSamplePoints = table(
     targetTimestamp: d.integer().notNull(), // The exact timestamp we're targeting
   },
   (troveManagerTimeSamplePoints) => [
-    // Unique constraint for trove-manager-specific samples
     d
       .uniqueIndex("trove_manager_time_sample_points_date_hour_tm_unique_idx")
       .on(
@@ -301,13 +302,39 @@ export const protocolTimeSamplePoints = table(
     targetTimestamp: d.integer().notNull(), // The exact timestamp we're targeting
   },
   (protocolTimeSamplePoints) => [
-    // Unique constraint for protocol-specific samples
     d
       .uniqueIndex("protocol_time_sample_points_date_hour_protocol_unique_idx")
       .on(protocolTimeSamplePoints.date, protocolTimeSamplePoints.hour, protocolTimeSamplePoints.protocolPk),
     d.check(
       "protocol_time_sample_points_hour_check",
       sql`${protocolTimeSamplePoints.hour} >= 0 AND ${protocolTimeSamplePoints.hour} <= 23`
+    ),
+  ]
+);
+
+export const hourlyTroveDataSummary = table(
+  "hourly_trove_data_summary",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveManagerPk: d
+      .integer()
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
+      .notNull(),
+    date: d.date().notNull(),
+    hour: d.integer().notNull(),
+    targetTimestamp: d.integer().notNull(),
+    avgInterestRate: d.decimal(),
+    avgColRatio: d.decimal(),
+    statusCounts: d.jsonb().notNull().default(JSON.stringify({})),
+    totalTroves: d.integer().default(0).notNull(),
+  },
+  (hourlyTroveDataSummary) => [
+    d
+      .uniqueIndex("hourly_trove_data_summary_date_hour_tm_unique_idx")
+      .on(hourlyTroveDataSummary.date, hourlyTroveDataSummary.hour, hourlyTroveDataSummary.troveManagerPk),
+    d.check(
+      "hourly_trove_data_summary_hour_check",
+      sql`${hourlyTroveDataSummary.hour} >= 0 AND ${hourlyTroveDataSummary.hour} <= 23`
     ),
   ]
 );
@@ -350,6 +377,7 @@ export const troveManagerRelations = relations(troveManagers, ({ one, many }) =>
   }),
   pricesAndRates: many(pricesAndRates),
   troveManagerTimeSamplePoints: many(troveManagerTimeSamplePoints),
+  hourlyTroveDataSummary: many(hourlyTroveDataSummary),
 }));
 
 export const troveDataRelations = relations(troveData, ({ one }) => ({
@@ -415,6 +443,13 @@ export const protocolTimeSamplePointsRelations = relations(protocolTimeSamplePoi
   }),
 }));
 
+export const hourlyTroveDataSummaryRelations = relations(hourlyTroveDataSummary, ({ one }) => ({
+  troveManager: one(troveManagers, {
+    fields: [hourlyTroveDataSummary.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
+}));
+
 const tables = {
   protocols,
   troveManagers,
@@ -430,6 +465,7 @@ const tables = {
   pricesAndRates,
   troveManagerTimeSamplePoints,
   protocolTimeSamplePoints,
+  hourlyTroveDataSummary,
 };
 
 export type TableName =
@@ -446,7 +482,8 @@ export type TableName =
   | "blockTimestamps"
   | "pricesAndRates"
   | "troveManagerTimeSamplePoints"
-  | "protocolTimeSamplePoints";
+  | "protocolTimeSamplePoints"
+  | "hourlyTroveDataSummary";
 
 export function getTable(tableName: TableName): PgTableWithColumns<any> {
   const table = tables[tableName as keyof typeof tables];

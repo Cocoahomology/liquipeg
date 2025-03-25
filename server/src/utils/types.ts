@@ -16,6 +16,7 @@ export type TroveDataByManager = {
 type TroveData = {
   troveId: string;
   debt: string;
+  entireDebt: string;
   coll: string;
   stake: string;
   status: number;
@@ -23,6 +24,7 @@ type TroveData = {
   lastDebtUpdateTime: string;
   lastInterestRateAdjTime: string;
   annualInterestRate: string;
+  accruedInterest: string;
   interestBatchManager: string;
   batchDebtShares: string;
 };
@@ -159,4 +161,19 @@ export type CollateralPricesAndRates = {
   underlyingUSDOracle: string | null;
   deviation: string | null;
   [key: `redemptionRelatedOracle${number}`]: string;
+};
+
+export type HourlyTroveDataSummaryEntry = {
+  protocolId?: number;
+  chain: string;
+  troveManagerIndex: number;
+  date: Date;
+  hour: number;
+  targetTimestamp: number;
+  avgInterestRate: string | null;
+  avgColRatio: string | null;
+  statusCounts: {
+    [statusCode: string]: number;
+  };
+  totalTroves: number;
 };
