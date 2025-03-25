@@ -14,6 +14,7 @@ import {
   recordedBlocks,
   pricesAndRates,
   troveManagerTimeSamplePoints,
+  protocolTimeSamplePoints,
 } from "./schema";
 import db from "./db";
 import { withDbError } from "../utils/dbWrapper";
@@ -757,5 +758,393 @@ export async function getDailyPricesAndRates(
       };
     },
     { table: "troveManagerTimeSamplePoints", chain, protocolId }
+  );
+}
+
+export async function getDailyPoolData(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex?: number,
+  startTimestamp?: number,
+  endTimestamp?: number,
+  replaceLastEntryWithHourly: boolean = false
+) {
+  return withDbError(
+    async () => {
+      const protocol = await getProtocol(protocolId, chain);
+      if (!protocol) return null;
+
+      let queryStartTimestamp: number;
+      let queryEndTimestamp: number = endTimestamp ?? Math.floor(Date.now() / 1000);
+
+      if (troveManagerIndex !== undefined) {
+        // Trove manager specific query for colPoolData
+        const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
+        if (!troveMgrs.length) return null;
+
+        const troveMgr = troveMgrs[0];
+
+        // If no startTimestamp provided, get the earliest sample point timestamp
+        if (startTimestamp === undefined) {
+          const earliestSample = await db
+            .select({ targetTimestamp: troveManagerTimeSamplePoints.targetTimestamp })
+            .from(troveManagerTimeSamplePoints)
+            .where(eq(troveManagerTimeSamplePoints.chain, chain))
+            .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp))
+            .limit(1);
+
+          if (!earliestSample.length) return null;
+          queryStartTimestamp = earliestSample[0].targetTimestamp;
+        } else {
+          queryStartTimestamp = startTimestamp;
+        }
+
+        // Get all sample dates for this trove manager
+        const uniqueDates = await db
+          .selectDistinct({
+            timestamp: troveManagerTimeSamplePoints.targetTimestamp,
+            date: troveManagerTimeSamplePoints.date,
+          })
+          .from(troveManagerTimeSamplePoints)
+          .where(
+            and(
+              eq(troveManagerTimeSamplePoints.chain, chain),
+              eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk),
+              eq(troveManagerTimeSamplePoints.hour, 0), // Only get daily points
+              gte(troveManagerTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+              lte(troveManagerTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+            )
+          )
+          .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp));
+
+        // Get all sample points for this trove manager within the timestamp range
+        const samplePoints = await db
+          .select({
+            timestamp: troveManagerTimeSamplePoints.targetTimestamp,
+            date: troveManagerTimeSamplePoints.date,
+            colPoolDataBlockNumber: troveManagerTimeSamplePoints.colPoolDataBlockNumber,
+            pricesAndRatesBlockNumber: troveManagerTimeSamplePoints.pricesAndRatesBlockNumber,
+          })
+          .from(troveManagerTimeSamplePoints)
+          .where(
+            and(
+              eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk),
+              eq(troveManagerTimeSamplePoints.hour, 0), // Only get daily points
+              gte(troveManagerTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+              lte(troveManagerTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+            )
+          )
+          .orderBy(asc(troveManagerTimeSamplePoints.targetTimestamp));
+
+        // Filter out sample points without block numbers for pool data
+        const validPoolSamplePoints = samplePoints.filter((sample) => sample.colPoolDataBlockNumber !== null);
+
+        const poolResult = {
+          protocolId,
+          chain,
+          troveManagerIndex,
+          dates: uniqueDates,
+          poolData: {} as Record<number, any>,
+          priceData: {} as Record<number, any>,
+        };
+
+        if (validPoolSamplePoints.length === 0) {
+          return poolResult;
+        }
+
+        const poolBlockNumbers = validPoolSamplePoints.map((sample) => sample.colPoolDataBlockNumber as number);
+
+        // Query colPoolData for the selected block numbers
+        const allPoolData = await db
+          .select()
+          .from(colPoolData)
+          .where(
+            and(
+              eq(colPoolData.troveManagerPk, troveMgr.pk),
+              sql`${colPoolData.blockNumber} = ANY(${new Param(poolBlockNumbers)})`
+            )
+          );
+
+        // Create a lookup map for fast access
+        const poolDataByBlock: Record<number, any> = {};
+        allPoolData.forEach((data) => {
+          const { pk, troveManagerPk, ...formattedData } = data;
+          poolDataByBlock[data.blockNumber] = formattedData;
+        });
+
+        // Create a mapping of timestamp to pool data for easier lookup
+        const poolDataByTimestamp: Record<number, any> = {};
+        validPoolSamplePoints.forEach((sample) => {
+          const { timestamp } = sample;
+          const blockNumber = sample.colPoolDataBlockNumber as number;
+          const data = poolDataByBlock[blockNumber];
+          if (data) {
+            poolDataByTimestamp[timestamp] = data;
+          }
+        });
+
+        // Now get the price data if available
+        const validPriceSamplePoints = samplePoints.filter((sample) => sample.pricesAndRatesBlockNumber !== null);
+
+        if (validPriceSamplePoints.length > 0) {
+          const priceBlockNumbers = validPriceSamplePoints.map((sample) => sample.pricesAndRatesBlockNumber as number);
+
+          // Query pricesAndRates for the selected block numbers
+          const allPriceData = await db
+            .select({
+              blockNumber: pricesAndRates.blockNumber,
+              colUSDPriceFeed: pricesAndRates.colUSDPriceFeed,
+              colUSDOracle: pricesAndRates.colUSDOracle,
+              LSTUnderlyingCanonicalRate: pricesAndRates.LSTUnderlyingCanonicalRate,
+              LSTUnderlyingMarketRate: pricesAndRates.LSTUnderlyingMarketRate,
+              underlyingUSDOracle: pricesAndRates.underlyingUSDOracle,
+              deviation: pricesAndRates.deviation,
+              redemptionRelatedOracles: pricesAndRates.redemptionRelatedOracles,
+              timestamp: blockTimestamps.timestamp,
+            })
+            .from(pricesAndRates)
+            .where(
+              and(
+                eq(pricesAndRates.troveManagerPk, troveMgr.pk),
+                sql`${pricesAndRates.blockNumber} = ANY(${new Param(priceBlockNumbers)})`
+              )
+            )
+            .leftJoin(
+              blockTimestamps,
+              and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
+            );
+
+          // Create a lookup map for fast access
+          const priceDataByBlock: Record<number, any> = {};
+          allPriceData.forEach((data) => {
+            priceDataByBlock[data.blockNumber] = data;
+          });
+
+          // Create a mapping of timestamp to price data for easier lookup
+          const priceDataByTimestamp: Record<number, any> = {};
+          validPriceSamplePoints.forEach((sample) => {
+            const { timestamp } = sample;
+            const blockNumber = sample.pricesAndRatesBlockNumber as number;
+            const data = priceDataByBlock[blockNumber];
+            if (data) {
+              priceDataByTimestamp[timestamp] = data;
+            }
+          });
+
+          poolResult.priceData = priceDataByTimestamp;
+        }
+
+        // If replaceLastEntryWithHourly is true, find and replace the most recent daily entry
+        if (replaceLastEntryWithHourly && uniqueDates.length > 0) {
+          const latestHourlySample = await db
+            .select({
+              targetTimestamp: troveManagerTimeSamplePoints.targetTimestamp,
+              date: troveManagerTimeSamplePoints.date,
+              hour: troveManagerTimeSamplePoints.hour,
+              colPoolDataBlockNumber: troveManagerTimeSamplePoints.colPoolDataBlockNumber,
+              pricesAndRatesBlockNumber: troveManagerTimeSamplePoints.pricesAndRatesBlockNumber,
+            })
+            .from(troveManagerTimeSamplePoints)
+            .where(and(eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk)))
+            .orderBy(desc(troveManagerTimeSamplePoints.targetTimestamp))
+            .limit(1);
+
+          if (latestHourlySample.length > 0) {
+            const samplePoint = latestHourlySample[0];
+            const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
+            uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
+
+            // Handle pool data update if block number exists
+            if (samplePoint.colPoolDataBlockNumber) {
+              const blockNumber = samplePoint.colPoolDataBlockNumber as number;
+              const hourlySamplePoolData = await db
+                .select()
+                .from(colPoolData)
+                .where(eq(colPoolData.blockNumber, blockNumber))
+                .limit(1);
+
+              if (hourlySamplePoolData.length > 0) {
+                delete poolDataByTimestamp[latestTimestamp];
+                const { pk, troveManagerPk, ...formattedData } = hourlySamplePoolData[0];
+                poolDataByTimestamp[samplePoint.targetTimestamp] = formattedData;
+              }
+            }
+
+            // Handle price data update if block number exists
+            if (samplePoint.pricesAndRatesBlockNumber && poolResult.priceData) {
+              const blockNumber = samplePoint.pricesAndRatesBlockNumber as number;
+              const hourlySamplePriceData = await db
+                .select({
+                  blockNumber: pricesAndRates.blockNumber,
+                  colUSDPriceFeed: pricesAndRates.colUSDPriceFeed,
+                  colUSDOracle: pricesAndRates.colUSDOracle,
+                  LSTUnderlyingCanonicalRate: pricesAndRates.LSTUnderlyingCanonicalRate,
+                  LSTUnderlyingMarketRate: pricesAndRates.LSTUnderlyingMarketRate,
+                  underlyingUSDOracle: pricesAndRates.underlyingUSDOracle,
+                  deviation: pricesAndRates.deviation,
+                  redemptionRelatedOracles: pricesAndRates.redemptionRelatedOracles,
+                  timestamp: blockTimestamps.timestamp,
+                })
+                .from(pricesAndRates)
+                .where(eq(pricesAndRates.blockNumber, blockNumber))
+                .leftJoin(
+                  blockTimestamps,
+                  and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
+                )
+                .limit(1);
+
+              if (hourlySamplePriceData.length > 0) {
+                delete (poolResult.priceData as Record<number, any>)[latestTimestamp];
+                (poolResult.priceData as Record<number, any>)[samplePoint.targetTimestamp] = hourlySamplePriceData[0];
+              }
+            }
+          }
+        }
+
+        poolResult.poolData = poolDataByTimestamp;
+        return poolResult;
+      } else {
+        // Protocol level query for corePoolData
+        // If no startTimestamp provided, get the earliest sample point timestamp
+        if (startTimestamp === undefined) {
+          const earliestSample = await db
+            .select({ targetTimestamp: protocolTimeSamplePoints.targetTimestamp })
+            .from(protocolTimeSamplePoints)
+            .where(eq(protocolTimeSamplePoints.chain, chain))
+            .orderBy(asc(protocolTimeSamplePoints.targetTimestamp))
+            .limit(1);
+
+          if (!earliestSample.length) return null;
+          queryStartTimestamp = earliestSample[0].targetTimestamp;
+        } else {
+          queryStartTimestamp = startTimestamp;
+        }
+
+        // Get all sample dates for this protocol
+        const uniqueDates = await db
+          .selectDistinct({
+            timestamp: protocolTimeSamplePoints.targetTimestamp,
+            date: protocolTimeSamplePoints.date,
+          })
+          .from(protocolTimeSamplePoints)
+          .where(
+            and(
+              eq(protocolTimeSamplePoints.chain, chain),
+              eq(protocolTimeSamplePoints.protocolPk, protocol.pk),
+              eq(protocolTimeSamplePoints.hour, 0), // Only get daily points
+              gte(protocolTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+              lte(protocolTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+            )
+          )
+          .orderBy(asc(protocolTimeSamplePoints.targetTimestamp));
+
+        // Get all sample points for this protocol within the timestamp range
+        const samplePoints = await db
+          .select({
+            timestamp: protocolTimeSamplePoints.targetTimestamp,
+            date: protocolTimeSamplePoints.date,
+            corePoolDataBlockNumber: protocolTimeSamplePoints.corePoolDataBlockNumber,
+          })
+          .from(protocolTimeSamplePoints)
+          .where(
+            and(
+              eq(protocolTimeSamplePoints.protocolPk, protocol.pk),
+              eq(protocolTimeSamplePoints.hour, 0), // Only get daily points
+              gte(protocolTimeSamplePoints.targetTimestamp, queryStartTimestamp),
+              lte(protocolTimeSamplePoints.targetTimestamp, queryEndTimestamp)
+            )
+          )
+          .orderBy(asc(protocolTimeSamplePoints.targetTimestamp));
+
+        // Filter out sample points without block numbers
+        const validSamplePoints = samplePoints.filter((sample) => sample.corePoolDataBlockNumber !== null);
+        if (validSamplePoints.length === 0) {
+          return {
+            protocolId,
+            chain,
+            dates: uniqueDates,
+            poolData: {},
+          };
+        }
+
+        const blockNumbers = validSamplePoints.map((sample) => sample.corePoolDataBlockNumber as number);
+
+        // Query corePoolData for the selected block numbers
+        const allPoolData = await db
+          .select()
+          .from(corePoolData)
+          .where(
+            and(
+              eq(corePoolData.protocolPk, protocol.pk),
+              sql`${corePoolData.blockNumber} = ANY(${new Param(blockNumbers)})`
+            )
+          );
+
+        // Create a lookup map for fast access
+        const poolDataByBlock: Record<number, any> = {};
+        allPoolData.forEach((data) => {
+          const { pk, protocolPk, totalCollaterals, ...formattedData } = data;
+          poolDataByBlock[data.blockNumber] = formattedData;
+        });
+
+        // Create a mapping of timestamp to pool data for easier lookup
+        const poolDataByTimestamp: Record<number, any> = {};
+        validSamplePoints.forEach((sample) => {
+          const { timestamp } = sample;
+          const blockNumber = sample.corePoolDataBlockNumber as number;
+          const data = poolDataByBlock[blockNumber];
+          if (data) {
+            poolDataByTimestamp[timestamp] = data;
+          }
+        });
+
+        // If replaceLastEntryWithHourly is true, find and replace the most recent daily entry
+        if (replaceLastEntryWithHourly && uniqueDates.length > 0) {
+          const latestHourlySample = await db
+            .select({
+              targetTimestamp: protocolTimeSamplePoints.targetTimestamp,
+              date: protocolTimeSamplePoints.date,
+              hour: protocolTimeSamplePoints.hour,
+              corePoolDataBlockNumber: protocolTimeSamplePoints.corePoolDataBlockNumber,
+            })
+            .from(protocolTimeSamplePoints)
+            .where(and(eq(protocolTimeSamplePoints.protocolPk, protocol.pk)))
+            .orderBy(desc(protocolTimeSamplePoints.targetTimestamp))
+            .limit(1);
+
+          if (latestHourlySample.length > 0 && latestHourlySample[0].corePoolDataBlockNumber) {
+            const samplePoint = latestHourlySample[0];
+            const blockNumber = samplePoint.corePoolDataBlockNumber as number;
+
+            if (blockNumber !== null) {
+              const hourlySamplePoolData = await db
+                .select()
+                .from(corePoolData)
+                .where(eq(corePoolData.blockNumber, blockNumber))
+                .limit(1);
+
+              if (hourlySamplePoolData.length > 0) {
+                const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
+
+                uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
+
+                delete poolDataByTimestamp[latestTimestamp];
+
+                const { pk, protocolPk, totalCollaterals, ...formattedData } = hourlySamplePoolData[0];
+                poolDataByTimestamp[samplePoint.targetTimestamp] = formattedData;
+              }
+            }
+          }
+        }
+
+        return {
+          protocolId,
+          chain,
+          dates: uniqueDates,
+          poolData: poolDataByTimestamp,
+        };
+      }
+    },
+    { table: troveManagerIndex !== undefined ? "colPoolData" : "corePoolData", chain, protocolId }
   );
 }
