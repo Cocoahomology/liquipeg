@@ -9,6 +9,7 @@ import {
   EventDataEntry,
   RecordedBlocksEntryWithChain,
   CollateralPricesAndRatesEntry,
+  HourlyTroveDataSummaryEntry,
 } from "../utils/types";
 import { protocols, troveManagers } from "./schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -1015,6 +1016,150 @@ export async function insertSamplePointEntries(
           }
         });
     }
+  };
+
+  if (trx) {
+    await executeInserts(trx);
+  } else {
+    await db.transaction(async (newTrx) => {
+      await executeInserts(newTrx);
+    });
+  }
+}
+
+export async function insertHourlyTroveDataSummaryEntries(
+  summaryEntries: HourlyTroveDataSummaryEntry[],
+  options: InsertOptions = {},
+  trx?: PgTransaction<any, any, any>
+) {
+  if (!summaryEntries.length) return;
+
+  const {
+    retryCount = DEFAULT_INSERT_OPTIONS.retryCount ?? 2,
+    retryDelay = DEFAULT_INSERT_OPTIONS.retryDelay ?? 2000,
+    onConflict = DEFAULT_INSERT_OPTIONS.onConflict ?? "update",
+  } = options;
+
+  const logger = ErrorLoggerService.getInstance();
+  const protocolsTable = getTable("protocols");
+  const protocolMap = new Map<string, number>();
+
+  for (const entry of summaryEntries) {
+    const { protocolId, chain } = entry;
+    const key = `${protocolId}-${chain}`;
+
+    if (!protocolMap.has(key)) {
+      const protocol = await db
+        .select()
+        .from(protocolsTable)
+        .where(and(eq(protocolsTable.protocolId, protocolId), eq(protocolsTable.chain, chain)));
+
+      if (protocol.length) {
+        protocolMap.set(key, protocol[0].pk);
+      } else {
+        throw new Error(`Protocol not found: ${protocolId} on chain ${chain}`);
+      }
+    }
+  }
+
+  let hasLoggedError = false;
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "hourlyTroveDataSummary",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const executeInserts = async (transaction: any) => {
+    const hourlyTroveDataSummaryTable = getTable("hourlyTroveDataSummary");
+    await PromisePool.for(summaryEntries)
+      .withConcurrency(20)
+      .withTaskTimeout(30000)
+      .process(async (entry) => {
+        const {
+          protocolId,
+          chain,
+          troveManagerIndex,
+          date,
+          hour,
+          targetTimestamp,
+          avgInterestRate,
+          statusCounts,
+          totalTroves,
+        } = entry;
+
+        try {
+          const protocolPk = protocolMap.get(`${protocolId}-${chain}`);
+          const troveManagerPk = await getTroveManagerPk(transaction, protocolPk!, troveManagerIndex);
+
+          await retry(
+            async () => {
+              if (onConflict === "ignore") {
+                await transaction
+                  .insert(hourlyTroveDataSummaryTable)
+                  .values({
+                    troveManagerPk,
+                    date: new Date(date),
+                    hour,
+                    targetTimestamp,
+                    avgInterestRate,
+                    statusCounts,
+                    totalTroves,
+                  })
+                  .onConflictDoNothing({
+                    target: [
+                      hourlyTroveDataSummaryTable.date,
+                      hourlyTroveDataSummaryTable.hour,
+                      hourlyTroveDataSummaryTable.troveManagerPk,
+                    ],
+                  });
+              } else {
+                await transaction
+                  .insert(hourlyTroveDataSummaryTable)
+                  .values({
+                    troveManagerPk,
+                    date: new Date(date),
+                    hour,
+                    targetTimestamp,
+                    avgInterestRate,
+                    statusCounts,
+                    totalTroves,
+                  })
+                  .onConflictDoUpdate({
+                    target: [
+                      hourlyTroveDataSummaryTable.date,
+                      hourlyTroveDataSummaryTable.hour,
+                      hourlyTroveDataSummaryTable.troveManagerPk,
+                    ],
+                    set: {
+                      targetTimestamp,
+                      avgInterestRate,
+                      statusCounts,
+                      totalTroves,
+                    },
+                  });
+              }
+            },
+            {
+              retries: retryCount,
+              minTimeout: retryDelay,
+              onRetry: (error) => {
+                logFirstError(error as Error, chain);
+              },
+            }
+          );
+        } catch (error) {
+          if (error instanceof Error) {
+            logFirstError(error, chain);
+            throw error;
+          } else throw error;
+        }
+      });
   };
 
   if (trx) {
