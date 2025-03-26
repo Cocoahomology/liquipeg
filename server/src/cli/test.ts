@@ -2,6 +2,7 @@ import * as sdk from "@defillama/sdk";
 import { getProvider } from "@defillama/sdk/build/general";
 import adapters from "../adapters";
 import { importProtocol } from "../data/importProtocol";
+import { PromisePool } from "@supercharge/promise-pool";
 
 if (process.argv.length < 4) {
   console.error(`Missing argument, you need to provide the exported name of adapter to test and how many blocks into the past to query.
@@ -22,6 +23,7 @@ const testAdapter = async () => {
     throw new Error(`No entry for protocol found in src/data/protocolData. Add an entry there before testing.`);
   }
 
+  /*
   if (adapter.fetchTroves) {
     const fetchTrovesFns = adapter.fetchTroves;
     console.log("Fetching Troves");
@@ -39,7 +41,9 @@ const testAdapter = async () => {
       }
     });
   }
+    */
 
+  /*
   if (adapter.fetchTroveOperations) {
     console.log("Fetching Trove Operations");
     const fetchTroveOperationsFns = adapter.fetchTroveOperations;
@@ -57,6 +61,7 @@ const testAdapter = async () => {
       }
     });
   }
+    */
 
   if (adapter.fetchImmutables) {
     console.log("Fetching Immutables");
@@ -76,6 +81,7 @@ const testAdapter = async () => {
     });
   }
 
+  /*
   if (adapter.fetchCorePoolData) {
     console.log("Fetching Core Pool Data");
     const fetchCorePoolDataFns = adapter.fetchCorePoolData;
@@ -93,6 +99,7 @@ const testAdapter = async () => {
       }
     });
   }
+    */
 
   /*
   Object.entries(adapter).map(async ([chain, adapterChainEventsFn]) => {
@@ -110,8 +117,10 @@ const testAdapter = async () => {
     const eventLogs = await adapterChainEventsFn(startBlock, number);
     console.log(eventLogs);
     console.log(`${eventLogs.length} transactions found.`);
-    const eventPromises = Promise.all(
-      eventLogs.map(async (log: any) => {
+    const { results: eventPromises } = await PromisePool
+      .for(eventLogs)
+      .withTaskTimeout(9999)
+      .process(async (log: any) => {
         ["txHash", "blockNumber", "from", "to", "token", "amount", "isDeposit"].map((key) => {
           if (key === "amount") {
             const amount = log.amount;
@@ -132,8 +141,7 @@ const testAdapter = async () => {
           ? transformTokens[contractsChain]?.[log.token]
           : `${contractsChain}:${log.token}`;
         uniqueTokens[tokenKey] = true;
-      })
-    );
+      });
     await eventPromises;
     console.log(`Values for event logs have correct types on chain ${chain}.`);
     tokensForPricing = Object.keys(uniqueTokens);

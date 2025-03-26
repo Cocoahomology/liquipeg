@@ -51,3 +51,5 @@ server/src/cli/filljobs.ts
 server/src/cli/getts.ts
 server/src/cli/test.ts
 server/src/cli/viewdb.ts
+server/src/cli/testread.ts
+server/src/cli/testRecordedBlocks.json

@@ -1,54 +1,52 @@
 {
-  "protocolId": 1,
-  "blockNumber": 25000000,
-  "chain": "ethereum",
-  "immutableData": {
-    "boldToken": "0xb01dd87B29d187F3E3a4Bf6cdAebfb97F3D9aB98",
-    "collateralRegistry": "0xd99dE73b95236F69A559117ECD6F519Af780F3f7",
-    "interestRouter": "0x636dEb767Cd7D0f15ca4aB8eA9a9b26E98B426AC",
-    "coreCollateralImmutables": {
-      "0": {
-        "CCR": "1500000000000000000n",
-        "SCR": "1100000000000000000n",
-        "MCR": "1100000000000000000n",
-        "troveManager": "0x81D78814DF42DA2caB0E8870C477bC3Ed861DE66",
-        "collToken": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        "activePool": "0xaCece9a6fF7fEa9b9e1CDfEEE61CA2B45cc4627b",
-        "defaultPool": "0x075e0c707097c4c071056687B0b87Cd9392C7bbd",
-        "stabilityPool": "0xF69eB8C0d95D4094c16686769460f678727393CF",
-        "borrowerOperationsAddress": "0x0B995602B5a797823f92027E8b40c0F2D97Aff1C",
-        "sortedTroves": "0x879474Cfbb980fB6899aaaA9b5D5EE14fFbF85A9",
-        "troveNFT": "0x84eD456a8074652130dFC4FE1fadb140e0F8ce2b",
-        "priceFeed": "0x3279e2B49ff60dAFb276FBAFF847383B67a7ec2d"
-      },
-      "1": {
-        "CCR": "1500000000000000000n",
-        "SCR": "1100000000000000000n",
-        "MCR": "1200000000000000000n",
-        "troveManager": "0xb47eF60132dEaBc89580Fd40e49C062D93070046",
-        "collToken": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
-        "activePool": "0x2fCF4e86594AADD744F82fd80D5Da9B72Ab50d7c",
-        "defaultPool": "0x4Fd6B1d48900E41710dB9F219E153Bb56727192B",
-        "stabilityPool": "0xcF46dAB575c364A8b91bDA147720ff4361F4627f",
-        "borrowerOperationsAddress": "0x94C1610a7373919BD9Cfb09Ded19894601f4a1be",
-        "sortedTroves": "0x15DDA27e28F49c392067f285157b82C1a4539978",
-        "troveNFT": "0xF7CF4EFcdAAcAb0c3F21931501133501fff51781",
-        "priceFeed": "0x4c275608887ad2eB049d9006E6852BC3ee8A00Fa"
-      },
-      "2": {
-        "CCR": "1500000000000000000n",
-        "SCR": "1100000000000000000n",
-        "MCR": "1200000000000000000n",
-        "troveManager": "0xde026433882a9DdED65cAc4FfF8402FAFFF40FcA",
-        "collToken": "0xae78736Cd615f374D3085123A210448E74Fc6393",
-        "activePool": "0x4B0739071d85444121b17b7D0EE23672825D7Cff",
-        "defaultPool": "0x26B1d8571560c7942e6DD79377721be81aE817a4",
-        "stabilityPool": "0xC4463b26bE1a6064000558a84EF9B6a58AbE4F7a",
-        "borrowerOperationsAddress": "0xA351d5B9cDa9Eb518727c3CEFF02208915fda60d",
-        "sortedTroves": "0x581705163884Ae5F21e946CDc9888BDCb2Ed0C0a",
-        "troveNFT": "0xeE922ebafE945b4F933Cd556F8D9a006fB3B8192",
-        "priceFeed": "0x93d3a2234e67C2aD494735cd6676fb4b79a6De97"
-      }
+  "boldToken": "0xb01dd87B29d187F3E3a4Bf6cdAebfb97F3D9aB98",
+  "collateralRegistry": "0xd99dE73b95236F69A559117ECD6F519Af780F3f7",
+  "interestRouter": "0x636dEb767Cd7D0f15ca4aB8eA9a9b26E98B426AC",
+  "coreCollateralImmutables": [
+    {
+      "getTroveManagerIndex": 0,
+      "CCR": "1500000000000000000n",
+      "SCR": "1100000000000000000n",
+      "MCR": "1100000000000000000n",
+      "troveManager": "0x81D78814DF42DA2caB0E8870C477bC3Ed861DE66",
+      "collToken": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "activePool": "0xaCece9a6fF7fEa9b9e1CDfEEE61CA2B45cc4627b",
+      "defaultPool": "0x075e0c707097c4c071056687B0b87Cd9392C7bbd",
+      "stabilityPool": "0xF69eB8C0d95D4094c16686769460f678727393CF",
+      "borrowerOperationsAddress": "0x0B995602B5a797823f92027E8b40c0F2D97Aff1C",
+      "sortedTroves": "0x879474Cfbb980fB6899aaaA9b5D5EE14fFbF85A9",
+      "troveNFT": "0x84eD456a8074652130dFC4FE1fadb140e0F8ce2b",
+      "priceFeed": "0x3279e2B49ff60dAFb276FBAFF847383B67a7ec2d"
+    },
+    {
+      "getTroveManagerIndex": 1,
+      "CCR": "1500000000000000000n",
+      "SCR": "1100000000000000000n",
+      "MCR": "1200000000000000000n",
+      "troveManager": "0xb47eF60132dEaBc89580Fd40e49C062D93070046",
+      "collToken": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "activePool": "0x2fCF4e86594AADD744F82fd80D5Da9B72Ab50d7c",
+      "defaultPool": "0x4Fd6B1d48900E41710dB9F219E153Bb56727192B",
+      "stabilityPool": "0xcF46dAB575c364A8b91bDA147720ff4361F4627f",
+      "borrowerOperationsAddress": "0x94C1610a7373919BD9Cfb09Ded19894601f4a1be",
+      "sortedTroves": "0x15DDA27e28F49c392067f285157b82C1a4539978",
+      "troveNFT": "0xF7CF4EFcdAAcAb0c3F21931501133501fff51781",
+      "priceFeed": "0x4c275608887ad2eB049d9006E6852BC3ee8A00Fa"
+    },
+    {
+      "getTroveManagerIndex": 2,
+      "CCR": "1500000000000000000n",
+      "SCR": "1100000000000000000n",
+      "MCR": "1200000000000000000n",
+      "troveManager": "0xde026433882a9DdED65cAc4FfF8402FAFFF40FcA",
+      "collToken": "0xae78736Cd615f374D3085123A210448E74Fc6393",
+      "activePool": "0x4B0739071d85444121b17b7D0EE23672825D7Cff",
+      "defaultPool": "0x26B1d8571560c7942e6DD79377721be81aE817a4",
+      "stabilityPool": "0xC4463b26bE1a6064000558a84EF9B6a58AbE4F7a",
+      "borrowerOperationsAddress": "0xA351d5B9cDa9Eb518727c3CEFF02208915fda60d",
+      "sortedTroves": "0x581705163884Ae5F21e946CDc9888BDCb2Ed0C0a",
+      "troveNFT": "0xeE922ebafE945b4F933Cd556F8D9a006fB3B8192",
+      "priceFeed": "0x93d3a2234e67C2aD494735cd6676fb4b79a6De97"
     }
-  }
+  ]
 }
