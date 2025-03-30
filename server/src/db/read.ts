@@ -1,5 +1,5 @@
-import { eq, asc, desc, and, sql, gte, lte, Param } from "drizzle-orm";
-import { blockTimestamps } from "../db/schema";
+import { eq, asc, desc, and, sql, gte, lte, Param, not } from "drizzle-orm";
+import { blockTimestamps, hourlyTroveDataSummary } from "../db/schema";
 import { ChainApi } from "@defillama/sdk";
 import { CoreImmutables, TroveDataEntry, CorePoolDataEntry, RecordedBlocksEntryWithChain } from "../utils/types";
 import { ErrorLoggerService } from "../utils/bunyan";
@@ -1146,5 +1146,127 @@ export async function getDailyPoolData(
       }
     },
     { table: troveManagerIndex !== undefined ? "colPoolData" : "corePoolData", chain, protocolId }
+  );
+}
+
+export async function getDailyTroveDataSummaries(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex: number,
+  startTimestamp?: number,
+  endTimestamp?: number,
+  replaceLastEntryWithHourly: boolean = false
+) {
+  return withDbError(
+    async () => {
+      const protocol = await getProtocol(protocolId, chain);
+      if (!protocol) return null;
+
+      const troveMgrs = await getTroveManagersForProtocol(protocolId, chain, troveManagerIndex);
+      if (!troveMgrs.length) return null;
+
+      const troveMgr = troveMgrs[0];
+
+      let queryEndTimestamp: number = endTimestamp ?? Math.floor(Date.now() / 1000);
+      let queryStartTimestamp: number;
+
+      // If no startTimestamp provided, get the earliest hourly trove data summary timestamp
+      if (startTimestamp === undefined) {
+        const earliestSummary = await db
+          .select({ targetTimestamp: hourlyTroveDataSummary.targetTimestamp })
+          .from(hourlyTroveDataSummary)
+          .where(
+            and(
+              eq(hourlyTroveDataSummary.troveManagerPk, troveMgr.pk),
+              eq(hourlyTroveDataSummary.hour, 0) // Only daily entries
+            )
+          )
+          .orderBy(asc(hourlyTroveDataSummary.targetTimestamp))
+          .limit(1);
+
+        if (!earliestSummary.length) return null;
+        queryStartTimestamp = earliestSummary[0].targetTimestamp;
+      } else {
+        queryStartTimestamp = startTimestamp;
+      }
+
+      // Get all daily trove data summaries for this trove manager within the time range
+      const dailySummaries = await db
+        .select({
+          date: hourlyTroveDataSummary.date,
+          targetTimestamp: hourlyTroveDataSummary.targetTimestamp,
+          avgInterestRate: hourlyTroveDataSummary.avgInterestRate,
+          colRatio: hourlyTroveDataSummary.colRatio,
+          statusCounts: hourlyTroveDataSummary.statusCounts,
+          totalTroves: hourlyTroveDataSummary.totalTroves,
+        })
+        .from(hourlyTroveDataSummary)
+        .where(
+          and(
+            eq(hourlyTroveDataSummary.troveManagerPk, troveMgr.pk),
+            eq(hourlyTroveDataSummary.hour, 0), // Only daily entries
+            gte(hourlyTroveDataSummary.targetTimestamp, queryStartTimestamp),
+            lte(hourlyTroveDataSummary.targetTimestamp, queryEndTimestamp)
+          )
+        )
+        .orderBy(asc(hourlyTroveDataSummary.targetTimestamp));
+
+      // Format data for response
+      const formattedDates = dailySummaries.map((summary) => ({
+        date: summary.date,
+        timestamp: summary.targetTimestamp,
+      }));
+
+      // Create a mapping of timestamp to summary data for easier lookup
+      const summaryDataByTimestamp: Record<number, any> = {};
+      dailySummaries.forEach((summary) => {
+        const { targetTimestamp, date, ...summaryData } = summary;
+        summaryDataByTimestamp[targetTimestamp] = summaryData;
+      });
+
+      // If replaceLastEntryWithHourly is true, find and replace the most recent daily entry with the most recent hourly entry
+      if (replaceLastEntryWithHourly && formattedDates.length > 0) {
+        const latestHourlySummary = await db
+          .select({
+            date: hourlyTroveDataSummary.date,
+            hour: hourlyTroveDataSummary.hour,
+            targetTimestamp: hourlyTroveDataSummary.targetTimestamp,
+            avgInterestRate: hourlyTroveDataSummary.avgInterestRate,
+            colRatio: hourlyTroveDataSummary.colRatio,
+            statusCounts: hourlyTroveDataSummary.statusCounts,
+            totalTroves: hourlyTroveDataSummary.totalTroves,
+          })
+          .from(hourlyTroveDataSummary)
+          .where(
+            and(
+              eq(hourlyTroveDataSummary.troveManagerPk, troveMgr.pk),
+              not(eq(hourlyTroveDataSummary.hour, 0)) // Only hourly entries (not daily)
+            )
+          )
+          .orderBy(desc(hourlyTroveDataSummary.targetTimestamp))
+          .limit(1);
+
+        if (latestHourlySummary.length > 0) {
+          const latestHourly = latestHourlySummary[0];
+          const latestDailyTimestamp = formattedDates[formattedDates.length - 1].timestamp;
+
+          // Replace the latest daily entry with the latest hourly entry
+          formattedDates[formattedDates.length - 1].timestamp = latestHourly.targetTimestamp;
+          delete summaryDataByTimestamp[latestDailyTimestamp];
+
+          const { targetTimestamp, date, hour, ...hourlyData } = latestHourly;
+          summaryDataByTimestamp[targetTimestamp] = hourlyData;
+        }
+      }
+
+      return {
+        protocolId,
+        chain,
+        troveManagerIndex,
+        dates: formattedDates,
+        summaryData: summaryDataByTimestamp,
+      };
+    },
+    { table: "hourlyTroveDataSummary", chain, protocolId }
   );
 }

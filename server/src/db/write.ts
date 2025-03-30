@@ -1,5 +1,13 @@
 import db from "./db";
-import { getTable, recordedBlocks } from "./schema";
+import {
+  getTable,
+  recordedBlocks,
+  coreColImmutables,
+  pricesAndRates,
+  troveData,
+  blockTimestamps,
+  troveManagerTimeSamplePoints,
+} from "./schema";
 import { Adapter } from "../utils/adapter.type";
 import { ErrorLoggerService } from "../utils/bunyan";
 import {
@@ -12,12 +20,13 @@ import {
   HourlyTroveDataSummaryEntry,
 } from "../utils/types";
 import { protocols, troveManagers } from "./schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, gte, lte, lt, and, sql, Param } from "drizzle-orm";
 import { PgTransaction } from "drizzle-orm/pg-core";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
 import retry from "async-retry";
 import { importProtocol } from "../data/importProtocol";
 import { PromisePool } from "@supercharge/promise-pool";
+import { getTimestampAtStartOfDayUTC, getTimestampAtStartOfHour } from "../utils/date";
 
 // FIX: types throughout this file
 
@@ -1089,6 +1098,7 @@ export async function insertHourlyTroveDataSummaryEntries(
           hour,
           targetTimestamp,
           avgInterestRate,
+          colRatio,
           statusCounts,
           totalTroves,
         } = entry;
@@ -1108,6 +1118,7 @@ export async function insertHourlyTroveDataSummaryEntries(
                     hour,
                     targetTimestamp,
                     avgInterestRate,
+                    colRatio,
                     statusCounts,
                     totalTroves,
                   })
@@ -1127,6 +1138,7 @@ export async function insertHourlyTroveDataSummaryEntries(
                     hour,
                     targetTimestamp,
                     avgInterestRate,
+                    colRatio,
                     statusCounts,
                     totalTroves,
                   })
@@ -1139,6 +1151,7 @@ export async function insertHourlyTroveDataSummaryEntries(
                     set: {
                       targetTimestamp,
                       avgInterestRate,
+                      colRatio,
                       statusCounts,
                       totalTroves,
                     },
@@ -1168,5 +1181,324 @@ export async function insertHourlyTroveDataSummaryEntries(
     await db.transaction(async (newTrx) => {
       await executeInserts(newTrx);
     });
+  }
+}
+
+export async function fillHourlyTroveDataSummary(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex: number,
+  targetTimestamp: number,
+  hourly: boolean = false
+) {
+  const logger = ErrorLoggerService.getInstance();
+  try {
+    // Determine timestamp and hour based on whether we want daily or hourly sample points
+    const startTimestamp = !hourly
+      ? getTimestampAtStartOfDayUTC(targetTimestamp)
+      : getTimestampAtStartOfHour(targetTimestamp);
+
+    // For hourly samples, we need to calculate the hour (0-23)
+    const hour = !hourly ? 0 : new Date(targetTimestamp * 1000).getUTCHours();
+    const date = new Date(startTimestamp * 1000);
+
+    // Get protocol and trove manager PKs
+    const protocol = await db.query.protocols.findFirst({
+      where: and(eq(protocols.protocolId, protocolId), eq(protocols.chain, chain)),
+    });
+
+    if (!protocol) {
+      throw new Error(`Protocol not found: ${protocolId} on chain ${chain}`);
+    }
+
+    const troveMgr = await db.query.troveManagers.findFirst({
+      where: and(eq(troveManagers.protocolPk, protocol.pk), eq(troveManagers.troveManagerIndex, troveManagerIndex)),
+    });
+
+    if (!troveMgr) {
+      throw new Error(
+        `Trove manager not found: index ${troveManagerIndex} for protocol ${protocolId} on chain ${chain}`
+      );
+    }
+
+    // Find the troveManagerTimeSamplePoints entry with targetTimestamp closest to startTimestamp
+    const samplePoints = await db.query.troveManagerTimeSamplePoints.findMany({
+      where: and(
+        eq(troveManagerTimeSamplePoints.troveManagerPk, troveMgr.pk),
+        // Filter for dates within 1 day of the target date
+        gte(troveManagerTimeSamplePoints.date, new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString()),
+        lte(troveManagerTimeSamplePoints.date, new Date(date.getTime() + 24 * 60 * 60 * 1000).toISOString())
+      ),
+    });
+
+    if (!samplePoints.length) {
+      const errString = `No sample points found for trove manager ${troveManagerIndex} for protocol ${protocolId} on chain ${chain}`;
+      console.log(errString);
+      logger.error({
+        error: errString,
+        keyword: "missingValues",
+        function: "fillHourlyTroveDataSummary",
+        chain,
+        protocolId,
+      });
+      return;
+    }
+
+    // Find the closest sample point to startTimestamp
+    let closestSamplePoint = samplePoints[0];
+    let minDiff = Math.abs(closestSamplePoint.targetTimestamp - startTimestamp);
+
+    for (let i = 1; i < samplePoints.length; i++) {
+      const diff = Math.abs(samplePoints[i].targetTimestamp - startTimestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestSamplePoint = samplePoints[i];
+      }
+    }
+
+    // Check if the closest sample point is too far from startTimestamp
+    const timeDiffInHours = minDiff / 3600; // Convert seconds to hours
+    let colRatio = null;
+
+    if (timeDiffInHours > 1) {
+      const errString = `Closest sample point timestamp (${closestSamplePoint.targetTimestamp}) is more than 1 hour away from target timestamp (${startTimestamp})`;
+      console.log(errString);
+      logger.error({
+        error: errString,
+        keyword: "missingValues",
+        function: "fillHourlyTroveDataSummary",
+        chain,
+        protocolId,
+      });
+
+      if (timeDiffInHours > 24) {
+        const criticalErrString = `Closest sample point timestamp (${closestSamplePoint.targetTimestamp}) is more than 24 hours away from target timestamp (${startTimestamp})`;
+        console.log(criticalErrString);
+        logger.error({
+          error: criticalErrString,
+          keyword: "missingValues",
+          function: "fillHourlyTroveDataSummary",
+          chain,
+          protocolId,
+        });
+        // We'll keep colRatio as null since the timestamp disparity is too large
+      }
+    }
+
+    // Find all blocks within 24 hours of the target timestamp
+    const blockTimestampRows = await db
+      .select({
+        blockNumber: blockTimestamps.blockNumber,
+        timestamp: blockTimestamps.timestamp,
+      })
+      .from(blockTimestamps)
+      .where(
+        and(
+          eq(blockTimestamps.chain, chain),
+          gte(blockTimestamps.timestamp, startTimestamp - 24 * 3600),
+          lt(blockTimestamps.timestamp, startTimestamp + 24 * 3600)
+        )
+      )
+      .orderBy(blockTimestamps.timestamp);
+
+    if (!blockTimestampRows.length) {
+      const errString = `No blocks found in the timestamp range for fillHourlyTroveDataSummary for protocolId ${protocolId}, ts ${targetTimestamp}`;
+      console.log(errString);
+      logger.error({
+        error: errString,
+        keyword: "missingValues",
+        function: "fillHourlyTroveDataSummary",
+        chain,
+        protocolId,
+      });
+      return;
+    }
+
+    // Get block numbers and create a lookup for timestamp by block
+    const blockNumbers = blockTimestampRows.map((row) => row.blockNumber);
+    const timestampByBlock: Record<number, number> = {};
+    blockTimestampRows.forEach((row) => {
+      if (row.timestamp !== null) {
+        timestampByBlock[row.blockNumber] = row.timestamp;
+      }
+    });
+
+    // Get all trove data entries for these blocks
+    const troveEntries = await db
+      .select()
+      .from(troveData)
+      .where(
+        and(eq(troveData.troveManagerPk, troveMgr.pk), sql`${troveData.blockNumber} = ANY(${new Param(blockNumbers)})`)
+      );
+
+    if (!troveEntries.length) {
+      const errString = `No trove data found for the blocks in the timestamp range for protocolId ${protocolId}, ts ${targetTimestamp}`;
+      console.log(errString);
+      logger.error({
+        error: errString,
+        keyword: "missingValues",
+        function: "fillHourlyTroveDataSummary",
+        chain,
+        protocolId,
+      });
+      return;
+    }
+
+    // Group by trove ID and find the closest entry to the start timestamp for each trove
+    const trovesByTroveId: Record<string, any[]> = {};
+    troveEntries.forEach((entry: any) => {
+      if (!trovesByTroveId[entry.troveId]) {
+        trovesByTroveId[entry.troveId] = [];
+      }
+      trovesByTroveId[entry.troveId].push(entry);
+    });
+
+    // For each trove ID, find the closest entry to the start timestamp
+    const closestEntries: any[] = [];
+    Object.keys(trovesByTroveId).forEach((troveId) => {
+      const entries = trovesByTroveId[troveId];
+      let closestEntry = entries[0];
+      let minDiff = Math.abs(timestampByBlock[closestEntry.blockNumber] - startTimestamp);
+
+      for (let i = 1; i < entries.length; i++) {
+        const entry = entries[i];
+        const blockTimestamp = timestampByBlock[entry.blockNumber];
+        const diff = Math.abs(blockTimestamp - startTimestamp);
+
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestEntry = entry;
+        }
+      }
+
+      closestEntries.push(closestEntry);
+    });
+
+    // Get coreColImmutables to retrieve collTokenDecimals
+    const colImmutables = await db.query.coreColImmutables.findFirst({
+      where: eq(coreColImmutables.troveManagerPk, troveMgr.pk),
+    });
+
+    if (!colImmutables) {
+      const errString = `Could not find coreColImmutables for trove manager ${troveManagerIndex} for protocol ${protocolId} on chain ${chain}`;
+      console.log(errString);
+      logger.error({
+        error: errString,
+        keyword: "missingValues",
+        function: "fillHourlyTroveDataSummary",
+        chain,
+        protocolId,
+      });
+      return;
+    }
+
+    const collTokenDecimals = parseInt(colImmutables.collTokenDecimals);
+
+    // Get pricesAndRates using the pricesAndRatesBlockNumber from the closest sample point
+    let colUSDPriceFeed = null;
+    if (closestSamplePoint.pricesAndRatesBlockNumber) {
+      const priceRates = await db.query.pricesAndRates.findFirst({
+        where: and(
+          eq(pricesAndRates.troveManagerPk, troveMgr.pk),
+          eq(pricesAndRates.blockNumber, closestSamplePoint.pricesAndRatesBlockNumber)
+        ),
+      });
+
+      if (priceRates) {
+        colUSDPriceFeed = priceRates.colUSDPriceFeed;
+      } else {
+        const errString = `Could not find pricesAndRates for block ${closestSamplePoint.pricesAndRatesBlockNumber}`;
+        console.log(errString);
+        logger.error({
+          error: errString,
+          keyword: "missingValues",
+          function: "fillHourlyTroveDataSummary",
+          chain,
+          protocolId,
+        });
+      }
+    }
+
+    // Calculate summary statistics
+    const statusCounts: Record<string, number> = {};
+    let totalInterestRate = 0;
+    let nonZeroInterestRateCount = 0;
+
+    let totalColUsdValue = 0;
+    let totalDebtAdjusted = 0;
+
+    closestEntries.forEach((entry) => {
+      const status = entry.status.toString();
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+
+      // if (status === "1") {
+      const interestRate = parseFloat(entry.annualInterestRate) / 10 ** 16;
+      if (interestRate > 0) {
+        totalInterestRate += interestRate;
+        nonZeroInterestRateCount++;
+      }
+
+      // Calculate collateral ratio if possible
+      if (colUSDPriceFeed && timeDiffInHours <= 24) {
+        try {
+          const coll = BigInt(entry.coll);
+          const entireDebt = BigInt(entry.entireDebt);
+          if (entireDebt > 0n) {
+            const colUsdPriceFloat = parseFloat(colUSDPriceFeed);
+            // Use a high precision multiplier (1e18) to preserve decimal places
+            const PRICE_PRECISION = 10 ** 18;
+            const colUsdPriceScaled = Math.round(colUsdPriceFloat * PRICE_PRECISION);
+
+            // Calculate with scaled values
+            const colUsdValue = (BigInt(colUsdPriceScaled) * coll) / BigInt(PRICE_PRECISION);
+            const debtAdjusted = entireDebt * BigInt(10) ** BigInt(collTokenDecimals - 18);
+
+            totalColUsdValue += Number(colUsdValue);
+            totalDebtAdjusted += Number(debtAdjusted);
+          }
+        } catch (e) {
+          console.error(`Error calculating col ratio for trove ${entry.troveId}:`, e);
+        }
+      } else {
+        console.log("No colUSDPriceFeed found, skipping col ratio calculation.");
+      }
+      // }
+    });
+
+    const avgInterestRate =
+      nonZeroInterestRateCount > 0 ? (totalInterestRate / nonZeroInterestRateCount).toFixed(3) : "0.000";
+
+    // Calculate average collateral ratio based on sums
+    if (totalDebtAdjusted > 0) {
+      // Calculate the global collateral ratio from the sums
+      colRatio = ((totalColUsdValue / totalDebtAdjusted) * 100).toFixed(3);
+    }
+
+    const summaryEntry: HourlyTroveDataSummaryEntry = {
+      protocolId,
+      chain,
+      troveManagerIndex,
+      date: date,
+      hour,
+      targetTimestamp: startTimestamp,
+      avgInterestRate,
+      colRatio,
+      statusCounts,
+      totalTroves: closestEntries.length,
+    };
+    // console.log(summaryEntry);
+
+    await insertHourlyTroveDataSummaryEntries([summaryEntry], { onConflict: "update" });
+  } catch (error) {
+    const errString = `Failed to fill hourly trove data summary: ${error}`;
+    console.error(errString);
+    logger.error({
+      error: errString,
+      keyword: "missingValues",
+      function: "fillHourlyTroveDataSummary",
+      chain,
+      protocolId,
+    });
+    throw error;
   }
 }
