@@ -8,7 +8,7 @@ import { getCollateralConfig } from "../collateralConfig";
 import { ErrorLoggerService } from "./bunyan";
 import { evaluateArithmeticExpression } from "./arithmeticExpressionEvaluator";
 
-BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_DOWN });
+BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_DOWN, EXPONENTIAL_AT: [-30, 30] });
 
 function extractConstructorArgs(bytecode: string) {
   // Each argument is 64 characters (32 bytes) long
@@ -63,11 +63,25 @@ async function getOracleAddressFromCreationData(
   }
 }
 
-function adjustByDecimals(value: string, decimals: string | number): string {
-  return new BigNumber(value).div(new BigNumber(10).pow(decimals)).toFixed(18);
+// Add this helper function to format numbers according to our DB schema
+function formatDecimalForDb(value: number | BigNumber, isDeviation: boolean = false): number {
+  const bigNumValue = BigNumber.isBigNumber(value) ? value : new BigNumber(value);
+
+  // Set the appropriate precision based on the field
+  const precision = isDeviation ? 19 : 36;
+  const scale = 18;
+
+  // Format with fixed decimal places and no exponential notation
+  // then convert back to number for DB storage
+  return Number(bigNumValue.toFixed(scale, BigNumber.ROUND_DOWN));
 }
 
-async function getChainlinkPrice(api: ChainApi, oracleAddress: string): Promise<string | null> {
+function adjustByDecimals(value: string, decimals: string | number): number {
+  const result = new BigNumber(value).div(new BigNumber(10).pow(decimals));
+  return formatDecimalForDb(result);
+}
+
+async function getChainlinkPrice(api: ChainApi, oracleAddress: string): Promise<number | null> {
   try {
     const [latestAnswer, decimals] = (await Promise.all([
       api.call({ abi: "int256:latestAnswer", target: oracleAddress }),
@@ -164,7 +178,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
           if (colUSDOracleAddress) {
             if (colUSDOracleAddress.oracleType === "chainlink") {
               const price = await getChainlinkPrice(api, colUSDOracleAddress.address);
-              if (price) {
+              if (price !== null) {
                 entry.colUSDOracle = price;
               }
             }
@@ -176,7 +190,6 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
                 abi: "uint256:lastGoodPrice",
                 target: priceFeed,
               })) as string;
-
               entry.colUSDPriceFeed = adjustByDecimals(lastGoodPrice, priceFeedLastGoodPriceDecimals);
             } catch (error) {
               const errString = `Failed to get last good price for priceFeed ${priceFeed}: ${error}`;
@@ -231,15 +244,9 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
                 console.error(errString);
               }
             } else {
-              const errString = `Failed to get LST underlying canonical rate for rateProvider ${rateProvider}.`;
-              logger.error({
-                error: errString,
-                keyword: "missingValues",
-                chain: api.chain,
-                protocolId: protocolId,
-                function: "getPriceDataByProtocolId",
-              });
-              console.error(errString);
+              console.log(
+                `No rateProvider or LSTUnderlyingCanonicalRateAbi obtained, LSTUnderlyingCanonicalRate skipped.`
+              );
             }
 
             const underlyingUSDOracleAddress =
@@ -254,7 +261,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
             if (underlyingUSDOracleAddress) {
               if (underlyingUSDOracleAddress.oracleType === "chainlink") {
                 const price = await getChainlinkPrice(api, underlyingUSDOracleAddress.address);
-                if (price) {
+                if (price !== null) {
                   entry.underlyingUSDOracle = price;
                 }
               }
@@ -284,7 +291,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
             if (LSTUnderlyingMarketRateOracleAddress) {
               if (LSTUnderlyingMarketRateOracleAddress.oracleType === "chainlink") {
                 const price = await getChainlinkPrice(api, LSTUnderlyingMarketRateOracleAddress.address);
-                if (price) {
+                if (price !== null) {
                   entry.LSTUnderlyingMarketRate = price;
                 }
               }
@@ -298,7 +305,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
             if (redemptionRelatedOracleAddress) {
               if (redemptionRelatedOracleAddress.oracleType === "chainlink") {
                 const price = await getChainlinkPrice(api, redemptionRelatedOracleAddress.address);
-                if (price) {
+                if (price !== null) {
                   entry[`redemptionRelatedOracle${Number(key)}`] = price;
                 }
               }
@@ -306,19 +313,42 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
           })
         );
 
-        if (!entry.colUSDOracle && entry.LSTUnderlyingCanonicalRate && entry.underlyingUSDOracle) {
-          entry.colUSDOracle = new BigNumber(entry.LSTUnderlyingCanonicalRate)
-            .times(entry.underlyingUSDOracle)
-            .toFixed(18);
+        if (!entry.colUSDOracle && entry.LSTUnderlyingCanonicalRate !== null && entry.underlyingUSDOracle !== null) {
+          const result = new BigNumber(entry.LSTUnderlyingCanonicalRate).times(entry.underlyingUSDOracle);
+          entry.colUSDOracle = formatDecimalForDb(result);
         }
 
         // Ensure deviation calculation is done as final step
         if (deviationFormula) {
           try {
-            entry.deviation = evaluateArithmeticExpression(deviationFormula, {
-              ...entry,
+            // Need to convert entry values to strings for the expression evaluator
+            const entryStringValues = Object.entries(entry).reduce((acc, [key, value]) => {
+              acc[key] = value === null ? null : String(value);
+              return acc;
+            }, {} as Record<string, string | null>);
+
+            const deviationResult = evaluateArithmeticExpression(deviationFormula, {
+              ...entryStringValues,
               troveManagerIndex: String(entry.troveManagerIndex),
             });
+
+            // Convert the BigNumber result to a number safely
+            if (deviationResult !== null) {
+              try {
+                // Use the special formatting for deviation (precision: 19, scale: 18)
+                entry.deviation = formatDecimalForDb(deviationResult, true);
+              } catch (conversionError) {
+                const errString = `Error converting deviation to number for troveManagerIndex ${troveManagerIndex}: ${conversionError}`;
+                logger.error({
+                  error: errString,
+                  keyword: "missingValues",
+                  chain: api.chain,
+                  protocolId: protocolId,
+                  function: "getPriceDataByProtocolId",
+                });
+                console.error(errString);
+              }
+            }
           } catch (error) {
             const errString = `Error calculating deviation for troveManagerIndex ${troveManagerIndex}: ${error}`;
             logger.error({

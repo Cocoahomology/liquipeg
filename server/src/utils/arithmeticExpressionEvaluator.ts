@@ -12,7 +12,10 @@ const operations: Record<string, Operation> = {
   "-": { precedence: 1, execute: (a, b) => a.minus(b) },
 };
 
-export function evaluateArithmeticExpression(formula: string, variables: Record<string, string | null>): string | null {
+export function evaluateArithmeticExpression(
+  formula: string,
+  variables: Record<string, string | null>
+): BigNumber | null {
   const tokens = formula.match(/\d+(\.\d+)?|[+\-*/()]|\w+/g) || [];
 
   const outputQueue: (string | BigNumber)[] = [];
@@ -64,5 +67,5 @@ export function evaluateArithmeticExpression(formula: string, variables: Record<
     }
   }
 
-  return stack[0].toString();
+  return stack[0];
 }

@@ -141,26 +141,26 @@ export type CollateralPricesAndRatesEntry = {
   blockNumber?: number;
   chain: string;
   troveManagerIndex: number;
-  colUSDPriceFeed: string | null;
-  colUSDOracle: string | null;
-  LSTUnderlyingCanonicalRate: string | null;
-  LSTUnderlyingMarketRate: string | null;
-  underlyingUSDOracle: string | null;
-  deviation: string | null;
+  colUSDPriceFeed: number | null;
+  colUSDOracle: number | null;
+  LSTUnderlyingCanonicalRate: number | null;
+  LSTUnderlyingMarketRate: number | null;
+  underlyingUSDOracle: number | null;
+  deviation: number | null;
   redemptionRelatedOracles: {
-    [key: `redemptionRelatedOracle${number}`]: string;
+    [key: `redemptionRelatedOracle${number}`]: number;
   };
 };
 
 export type CollateralPricesAndRates = {
   troveManagerIndex: number;
-  colUSDPriceFeed: string | null;
-  colUSDOracle: string | null;
-  LSTUnderlyingCanonicalRate: string | null;
-  LSTUnderlyingMarketRate: string | null;
-  underlyingUSDOracle: string | null;
-  deviation: string | null;
-  [key: `redemptionRelatedOracle${number}`]: string;
+  colUSDPriceFeed: number | null;
+  colUSDOracle: number | null;
+  LSTUnderlyingCanonicalRate: number | null;
+  LSTUnderlyingMarketRate: number | null;
+  underlyingUSDOracle: number | null;
+  deviation: number | null;
+  [key: `redemptionRelatedOracle${number}`]: number;
 };
 
 export type HourlyTroveDataSummaryEntry = {
@@ -171,7 +171,7 @@ export type HourlyTroveDataSummaryEntry = {
   hour: number;
   targetTimestamp: number;
   avgInterestRate: string | null;
-  avgColRatio: string | null;
+  colRatio: string | null;
   statusCounts: {
     [statusCode: string]: number;
   };
