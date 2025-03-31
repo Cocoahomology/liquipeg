@@ -1,7 +1,7 @@
 import aws from "aws-sdk";
 import type { Readable } from "stream";
 
-const datasetBucket = "llama-bridges-data";
+const datasetBucket = "liquipeg-server-data";
 
 function next21Minutedate() {
   const dt = new Date();
