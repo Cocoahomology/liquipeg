@@ -1,10 +1,13 @@
 import db from "./db";
+import * as sdk from "@defillama/sdk";
 import {
   getTable,
   recordedBlocks,
   coreColImmutables,
   pricesAndRates,
   troveData,
+  corePoolData,
+  colPoolData,
   blockTimestamps,
   troveManagerTimeSamplePoints,
 } from "./schema";
@@ -20,9 +23,10 @@ import {
   HourlyTroveDataSummaryEntry,
 } from "../utils/types";
 import { protocols, troveManagers } from "./schema";
-import { eq, gte, lte, lt, and, sql, Param } from "drizzle-orm";
+import { eq, lt, gt, gte, lte, and, sql, Param } from "drizzle-orm";
 import { PgTransaction } from "drizzle-orm/pg-core";
 import { DEFAULT_INSERT_OPTIONS, InsertOptions } from "./types";
+import { withTimeout } from "../utils/async";
 import retry from "async-retry";
 import { importProtocol } from "../data/importProtocol";
 import { PromisePool } from "@supercharge/promise-pool";
@@ -214,6 +218,52 @@ async function insertEntries(
     await db.transaction(async (newTrx) => {
       await executeInserts(newTrx);
     });
+  }
+}
+
+async function findClosestGtBlockEntry(table: any, targetBlock: number, filterCondition: any) {
+  const logger = ErrorLoggerService.getInstance();
+  try {
+    const [result] = await db
+      .select({
+        blockNumber: table.blockNumber,
+      })
+      .from(table)
+      .where(and(filterCondition, gt(table.blockNumber, targetBlock)))
+      .orderBy(sql`ABS(${table.blockNumber} - ${targetBlock})`)
+      .limit(1);
+
+    return result?.blockNumber as number | undefined;
+  } catch (error) {
+    logger.error({
+      error: `Failed to find closest block entry (greater than): ${error}`,
+      keyword: "missingValues",
+      function: "findClosestGtBlockEntry",
+    });
+    throw error;
+  }
+}
+
+async function findClosestLtBlockEntry(table: any, targetBlock: number, filterCondition: any) {
+  const logger = ErrorLoggerService.getInstance();
+  try {
+    const [result] = await db
+      .select({
+        blockNumber: table.blockNumber,
+      })
+      .from(table)
+      .where(and(filterCondition, lt(table.blockNumber, targetBlock)))
+      .orderBy(sql`ABS(${table.blockNumber} - ${targetBlock})`)
+      .limit(1);
+
+    return result?.blockNumber as number | undefined;
+  } catch (error) {
+    logger.error({
+      error: `Failed to find closest block entry (less than): ${error}`,
+      keyword: "missingValues",
+      function: "findClosestLtBlockEntry",
+    });
+    throw error;
   }
 }
 
@@ -1498,6 +1548,288 @@ export async function fillHourlyTroveDataSummary(
       function: "fillHourlyTroveDataSummary",
       chain,
       protocolId,
+    });
+    throw error;
+  }
+}
+
+export async function fillTimeSamplePoints(targetTimestamp: number, hourly: boolean = false) {
+  const logger = ErrorLoggerService.getInstance();
+  try {
+    console.log(
+      `Starting fillTimeSamplePoints with target timestamp: ${targetTimestamp} (${new Date(
+        targetTimestamp * 1000
+      ).toISOString()})`
+    );
+
+    const startTimestamp = !hourly
+      ? getTimestampAtStartOfDayUTC(targetTimestamp)
+      : getTimestampAtStartOfHour(targetTimestamp);
+
+    const hour = !hourly ? 0 : new Date(targetTimestamp * 1000).getUTCHours();
+
+    const protocolEntries = await db
+      .select({
+        pk: protocols.pk,
+        chain: protocols.chain,
+      })
+      .from(protocols);
+
+    const troveManagerEntries = await db
+      .select({
+        pk: troveManagers.pk,
+        chain: protocols.chain,
+      })
+      .from(troveManagers)
+      .innerJoin(protocols, eq(troveManagers.protocolPk, protocols.pk));
+
+    const samplePoints = [];
+
+    console.log(`Processing ${protocolEntries.length} protocols...`);
+    for (const [index, { pk: protocolPk, chain }] of protocolEntries.entries()) {
+      try {
+        const keyBlock = await retry(
+          async () => withTimeout(sdk.blocks.getBlock(chain, startTimestamp), { milliseconds: 15000 }),
+          {
+            retries: 1,
+            minTimeout: 1000,
+            maxTimeout: 2000,
+          }
+        );
+        const keyBlockNumber = keyBlock.number;
+
+        let corePoolDataBlockNumber = await findClosestGtBlockEntry(
+          corePoolData,
+          keyBlockNumber,
+          eq(corePoolData.protocolPk, protocolPk)
+        );
+
+        const provider = await sdk.getProvider(chain);
+        let corePoolDataBlockTimestamp;
+        let corePoolDataBlock;
+        let isValidBlock = false;
+
+        const endTimestamp = !hourly ? startTimestamp + 24 * 60 * 60 : startTimestamp + 60 * 60;
+
+        if (corePoolDataBlockNumber !== undefined) {
+          corePoolDataBlock = await retry(
+            async () => withTimeout(provider.getBlock(corePoolDataBlockNumber as number), { milliseconds: 15000 }),
+            {
+              retries: 1,
+              minTimeout: 1000,
+              maxTimeout: 2000,
+            }
+          );
+
+          if (corePoolDataBlock) {
+            corePoolDataBlockTimestamp = corePoolDataBlock.timestamp;
+            isValidBlock = corePoolDataBlock.timestamp < endTimestamp;
+          }
+        }
+
+        if (!isValidBlock) {
+          corePoolDataBlockNumber = await findClosestLtBlockEntry(
+            corePoolData,
+            keyBlockNumber,
+            eq(corePoolData.protocolPk, protocolPk)
+          );
+
+          if (corePoolDataBlockNumber !== undefined) {
+            corePoolDataBlock = await retry(
+              async () => withTimeout(provider.getBlock(corePoolDataBlockNumber as number), { milliseconds: 15000 }),
+              {
+                retries: 1,
+                minTimeout: 1000,
+                maxTimeout: 2000,
+              }
+            );
+
+            if (corePoolDataBlock) {
+              corePoolDataBlockTimestamp = corePoolDataBlock.timestamp;
+              const minTimestamp = !hourly ? startTimestamp - 24 * 60 * 60 : startTimestamp - 60 * 60;
+              isValidBlock = corePoolDataBlock.timestamp >= minTimestamp;
+            }
+          }
+        }
+
+        if (isValidBlock && corePoolDataBlock) {
+          samplePoints.push({
+            date: new Date(startTimestamp * 1000),
+            hour: hour,
+            targetTimestamp: startTimestamp,
+            protocolPk,
+            corePoolDataBlockNumber: corePoolDataBlock.number ?? undefined,
+          });
+        }
+      } catch (error) {
+        const errString = `Failed to process protocol pk ${protocolPk} on chain ${chain}: ${error}`;
+        console.error(errString);
+        logger.error({
+          error: errString,
+          keyword: "missingValues",
+          function: "fillTimeSamplePoints",
+          chain,
+        });
+        continue;
+      }
+    }
+
+    for (const [index, { pk: troveManagerPk, chain }] of troveManagerEntries.entries()) {
+      try {
+        const keyBlock = await retry(
+          async () => withTimeout(sdk.blocks.getBlock(chain, startTimestamp), { milliseconds: 15000 }),
+          {
+            retries: 1,
+            minTimeout: 1000,
+            maxTimeout: 2000,
+          }
+        );
+
+        const keyBlockNumber = keyBlock.number;
+        const provider = await sdk.getProvider(chain);
+
+        const endTimestamp = !hourly ? startTimestamp + 24 * 60 * 60 : startTimestamp + 60 * 60;
+        const minTimestamp = !hourly ? startTimestamp - 24 * 60 * 60 : startTimestamp - 60 * 60;
+
+        let colPoolDataBlockNumber = await findClosestGtBlockEntry(
+          colPoolData,
+          keyBlockNumber,
+          eq(colPoolData.troveManagerPk, troveManagerPk)
+        );
+
+        let pricesAndRatesBlockNumber = await findClosestGtBlockEntry(
+          pricesAndRates,
+          keyBlockNumber,
+          eq(pricesAndRates.troveManagerPk, troveManagerPk)
+        );
+
+        let colPoolDataBlock, pricesAndRatesBlock;
+        let colPoolDataBlockTimestamp, pricesAndRatesBlockTimestamp;
+        let isValidColPoolBlock = false;
+        let isValidPricesBlock = false;
+
+        if (colPoolDataBlockNumber !== undefined) {
+          colPoolDataBlock = await retry(
+            async () => withTimeout(provider.getBlock(colPoolDataBlockNumber as number), { milliseconds: 15000 }),
+            {
+              retries: 1,
+              minTimeout: 1000,
+              maxTimeout: 2000,
+            }
+          );
+
+          if (colPoolDataBlock) {
+            colPoolDataBlockTimestamp = colPoolDataBlock.timestamp;
+            isValidColPoolBlock = colPoolDataBlock.timestamp < endTimestamp;
+          }
+        }
+
+        if (!isValidColPoolBlock) {
+          colPoolDataBlockNumber = await findClosestLtBlockEntry(
+            colPoolData,
+            keyBlockNumber,
+            eq(colPoolData.troveManagerPk, troveManagerPk)
+          );
+
+          if (colPoolDataBlockNumber !== undefined) {
+            colPoolDataBlock = await retry(
+              async () => withTimeout(provider.getBlock(colPoolDataBlockNumber as number), { milliseconds: 15000 }),
+              {
+                retries: 1,
+                minTimeout: 1000,
+                maxTimeout: 2000,
+              }
+            );
+
+            if (colPoolDataBlock) {
+              colPoolDataBlockTimestamp = colPoolDataBlock.timestamp;
+              isValidColPoolBlock = colPoolDataBlock.timestamp >= minTimestamp;
+            }
+          }
+        }
+
+        if (pricesAndRatesBlockNumber !== undefined) {
+          pricesAndRatesBlock = await retry(
+            async () => withTimeout(provider.getBlock(pricesAndRatesBlockNumber as number), { milliseconds: 15000 }),
+            {
+              retries: 1,
+              minTimeout: 1000,
+              maxTimeout: 2000,
+            }
+          );
+
+          if (pricesAndRatesBlock) {
+            pricesAndRatesBlockTimestamp = pricesAndRatesBlock.timestamp;
+            isValidPricesBlock = pricesAndRatesBlock.timestamp < endTimestamp;
+          }
+        }
+
+        if (!isValidPricesBlock) {
+          pricesAndRatesBlockNumber = await findClosestLtBlockEntry(
+            pricesAndRates,
+            keyBlockNumber,
+            eq(pricesAndRates.troveManagerPk, troveManagerPk)
+          );
+
+          if (pricesAndRatesBlockNumber !== undefined) {
+            pricesAndRatesBlock = await retry(
+              async () => withTimeout(provider.getBlock(pricesAndRatesBlockNumber as number), { milliseconds: 15000 }),
+              {
+                retries: 1,
+                minTimeout: 1000,
+                maxTimeout: 2000,
+              }
+            );
+
+            if (pricesAndRatesBlock) {
+              pricesAndRatesBlockTimestamp = pricesAndRatesBlock.timestamp;
+              isValidPricesBlock = pricesAndRatesBlock.timestamp >= minTimestamp;
+            }
+          }
+        }
+
+        const validBlocks = {
+          colPoolDataBlock: isValidColPoolBlock ? colPoolDataBlockNumber : null,
+          pricesAndRatesBlock: isValidPricesBlock ? pricesAndRatesBlockNumber : null,
+        };
+
+        if (validBlocks.colPoolDataBlock || validBlocks.pricesAndRatesBlock) {
+          samplePoints.push({
+            date: new Date(startTimestamp * 1000),
+            hour: hour,
+            targetTimestamp: startTimestamp,
+            troveManagerPk,
+            colPoolDataBlockNumber: validBlocks.colPoolDataBlock ?? undefined,
+            pricesAndRatesBlockNumber: validBlocks.pricesAndRatesBlock ?? undefined,
+          });
+        }
+      } catch (error) {
+        const errString = `Failed to process trove manager ${troveManagerPk} on chain ${chain}: ${error}`;
+        console.error(errString);
+        logger.error({
+          error: errString,
+          keyword: "missingValues",
+          function: "fillTimeSamplePoints",
+          chain,
+        });
+        continue;
+      }
+    }
+
+    console.log(`Inserting ${samplePoints.length} sample points into database...`);
+    if (samplePoints.length > 0) {
+      await insertSamplePointEntries(samplePoints, { onConflict: "update" });
+      console.log(`Successfully inserted sample points`);
+    }
+
+    console.log(`Completed fillTimeSamplePoints successfully`);
+  } catch (error) {
+    const errString = `Failed to fill time sample points: ${error}`;
+    console.error(errString);
+    logger.error({
+      error: errString,
+      keyword: "missingValues",
+      function: "fillTimeSamplePoints",
     });
     throw error;
   }
