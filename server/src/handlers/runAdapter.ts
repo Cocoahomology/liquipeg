@@ -1,12 +1,27 @@
 import { wrapScheduledLambda } from "../utils/wrap";
 import protocols from "../data/protocolData";
 import { runAdapterToCurrentBlock } from "../utils/adapter";
-import { createErrorLogger, closeLogStream } from "../utils/bunyan";
+import { ErrorLoggerService } from "../utils/bunyan";
 
 const handler = async (event: any) => {
-  const errorLogger = createErrorLogger();
-  await runAdapterToCurrentBlock(protocols[event.protocolIndex], false, "upsert", errorLogger);
-  await closeLogStream;
+  const logger = ErrorLoggerService.getInstance();
+  logger.initLogger();
+  try {
+    await runAdapterToCurrentBlock(
+      protocols[event.protocolIndex],
+      { allowNullDbValues: false, onConflict: "update" },
+      false
+    );
+  } catch (error) {
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      keyword: "critical",
+      protocolId: event.protocolIndex,
+    });
+    throw error;
+  } finally {
+    await logger.closeLogger();
+  }
 };
 
 export default wrapScheduledLambda(handler);

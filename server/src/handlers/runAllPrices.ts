@@ -20,8 +20,12 @@ async function invokeLambda(functionName: string, event: any) {
 
 export default wrapScheduledLambda(async (_event) => {
   for (let i = 0; i < protocols.length; i++) {
-    await invokeLambda(`liquipeg-server-prod-runAdapter`, {
-      protocolIndex: i,
-    });
+    const protocol = protocols[i];
+    for (let j = 0; j < protocol.chains.length; j++) {
+      await invokeLambda(`liquipeg-server-prod-runPrices`, {
+        protocolId: protocol.id,
+        chain: protocol.chains[j],
+      });
+    }
   }
 });

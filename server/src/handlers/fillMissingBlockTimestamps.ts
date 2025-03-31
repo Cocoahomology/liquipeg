@@ -1,3 +1,4 @@
+import { wrapScheduledLambda } from "../utils/wrap";
 import * as sdk from "@defillama/sdk";
 import retry from "async-retry";
 import { withTimeout } from "../utils/async";
@@ -6,8 +7,7 @@ import { PromisePool } from "@supercharge/promise-pool";
 import { insertBlockTimestampEntries } from "../db/write";
 import { maxBlocksToQueryByChain } from "../utils/constants";
 
-// FIX: Make into handler
-export async function fillMissingBlockTimestamps() {
+const handler = async (_event: any) => {
   const blockTimestampEntries = await getBlocksWithMissingTimestamps();
 
   await Promise.allSettled(
@@ -62,4 +62,6 @@ export async function fillMissingBlockTimestamps() {
       await insertBlockTimestampEntries(chain, blockTimestampsList);
     })
   );
-}
+};
+
+export default wrapScheduledLambda(handler);

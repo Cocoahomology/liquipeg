@@ -1,23 +1,21 @@
+import { wrapScheduledLambda } from "../utils/wrap";
 import { fillHourlyTroveDataSummary } from "../db/write";
 import protocolData from "../data/protocolData";
 import { getTroveManagersForProtocol } from "../db/read";
 import { ErrorLoggerService } from "../utils/bunyan";
 
-export const fillTroveDataSummaries = async () => {
-  const currentTimestamp = 1743321983;
+const handler = async (_event: any) => {
+  const currentTimestamp = Math.floor(Date.now() / 1000);
   const currentDate = new Date();
   const currentHourUTC = currentDate.getUTCHours();
   const isStartOfDay = currentHourUTC >= 0 && currentHourUTC < 1;
   const logger = ErrorLoggerService.getInstance();
 
-  // Loop through each protocol in protocolData
   for (const protocol of protocolData) {
     const protocolId = protocol.id;
 
-    // Process each chain for the protocol
     for (const chain of protocol.chains) {
       try {
-        // Get all trove managers for this protocol and chain
         const troveManagers = await getTroveManagersForProtocol(protocolId, chain);
 
         if (!troveManagers || troveManagers.length === 0) {
@@ -25,7 +23,6 @@ export const fillTroveDataSummaries = async () => {
           continue;
         }
 
-        // Process each trove manager
         for (const troveMgr of troveManagers) {
           const troveManagerIndex = troveMgr.troveManagerIndex;
 
@@ -73,3 +70,5 @@ export const fillTroveDataSummaries = async () => {
 
   console.log("Completed filling trove data summaries");
 };
+
+export default wrapScheduledLambda(handler);
