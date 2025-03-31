@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "deploy:prod": "export NODE_OPTIONS=--max-old-space-size=10240 && sls deploy --stage prod",
+    "deploy:prod": "set NODE_OPTIONS=--max-old-space-size=10240 && sls deploy --stage prod",
     "serve": "sls offline start",
     "build": "sls webpack",
     "test": "ts-node test.js"
@@ -18,7 +18,8 @@
     "serverless": "^3.21.0",
     "serverless-offline": "^9.1.6",
     "serverless-prune-plugin": "^2.0.1",
-    "ts-loader": "^9.3.1"
+    "ts-loader": "^9.3.1",
+    "webpack-node-externals": "^3.0.0"
   },
   "dependencies": {
     "@defillama/sdk": "^5.0.116",
