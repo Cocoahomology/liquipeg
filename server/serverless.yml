@@ -145,16 +145,19 @@ functions:
 
 custom:
   stage: ${opt:stage, self:provider.stage}
-  webpack:
-    webpackConfig: ./webpack.config.js
-    includeModules: true
-    packager: "npm"
-    excludeFiles: src/**/*.test.ts
+  esbuild:
+    bundle: true
+    minify: true # set to true for production if needed
+    sourcemap: true
+    exclude: ["aws-sdk", "dtrace-provider"]
+    target: "node18"
+    platform: "node"
+    concurrency: 10
   prune:
     automatic: true
     number: 5 # Number of versions to keep
 
 plugins:
-  - serverless-webpack
+  - serverless-esbuild
   - serverless-offline
   - serverless-prune-plugin
