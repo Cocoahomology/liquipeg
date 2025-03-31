@@ -730,7 +730,12 @@ export async function getDailyPricesAndRates(
                 timestamp: blockTimestamps.timestamp,
               })
               .from(pricesAndRates)
-              .where(eq(pricesAndRates.blockNumber, blockNumber))
+              .where(
+                and(
+                  eq(pricesAndRates.blockNumber, blockNumber),
+                  eq(pricesAndRates.troveManagerPk, troveMgr.pk) // Add filter for specific trove manager
+                )
+              )
               .leftJoin(
                 blockTimestamps,
                 and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
@@ -960,7 +965,7 @@ export async function getDailyPoolData(
               const hourlySamplePoolData = await db
                 .select()
                 .from(colPoolData)
-                .where(eq(colPoolData.blockNumber, blockNumber))
+                .where(and(eq(colPoolData.blockNumber, blockNumber), eq(colPoolData.troveManagerPk, troveMgr.pk)))
                 .limit(1);
 
               if (hourlySamplePoolData.length > 0) {
@@ -986,7 +991,7 @@ export async function getDailyPoolData(
                   timestamp: blockTimestamps.timestamp,
                 })
                 .from(pricesAndRates)
-                .where(eq(pricesAndRates.blockNumber, blockNumber))
+                .where(and(eq(pricesAndRates.blockNumber, blockNumber), eq(pricesAndRates.troveManagerPk, troveMgr.pk)))
                 .leftJoin(
                   blockTimestamps,
                   and(eq(blockTimestamps.blockNumber, pricesAndRates.blockNumber), eq(blockTimestamps.chain, chain))
@@ -1120,7 +1125,7 @@ export async function getDailyPoolData(
               const hourlySamplePoolData = await db
                 .select()
                 .from(corePoolData)
-                .where(eq(corePoolData.blockNumber, blockNumber))
+                .where(and(eq(corePoolData.blockNumber, blockNumber), eq(corePoolData.protocolPk, protocol.pk)))
                 .limit(1);
 
               if (hourlySamplePoolData.length > 0) {
