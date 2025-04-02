@@ -61,9 +61,7 @@ export const getEvmEventLogs = async (
               { milliseconds: 30000, message: `getLogs timeout for ${eventName} on chain ${api.chain}` }
             );
             if (logs.length === 0) {
-              console.info(
-                `No logs received for event ${eventName} on chain ${api.chain} from ${fromBlock} to ${toBlock} with topic ${topic}.`
-              );
+              console.info(`No logs received for event ${eventName}.`);
             }
           } catch (e: any) {
             console.error(target, e);
