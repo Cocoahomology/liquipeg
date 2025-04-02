@@ -22,6 +22,7 @@
     "webpack-node-externals": "^3.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.777.0",
     "@defillama/sdk": "^5.0.116",
     "@supercharge/promise-pool": "^3.2.0",
     "@types/async-retry": "^1.4.9",

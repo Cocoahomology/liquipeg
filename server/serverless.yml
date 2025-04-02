@@ -120,21 +120,21 @@ functions:
           method: get
   runAdapter:
     handler: src/handlers/runAdapter.default
-    timeout: 900
+    timeout: 300
     memorySize: 1024
   runAllAdapters:
     handler: src/handlers/runAllAdapters.default
-    timeout: 900
+    timeout: 300
     memorySize: 250
     events:
       - schedule: cron(1 0,12 * * ? *)
   runPrices:
     handler: src/handlers/runPrices.default
-    timeout: 900
+    timeout: 300
     memorySize: 1024
   runAllPrices:
     handler: src/handlers/runAllPrices.default
-    timeout: 900
+    timeout: 300
     memorySize: 250
     events:
       - schedule: cron(2 0,12 * * ? *)
@@ -149,10 +149,11 @@ custom:
     bundle: true
     minify: true # set to true for production if needed
     sourcemap: true
-    exclude: ["aws-sdk", "dtrace-provider"]
     target: "node18"
     platform: "node"
     concurrency: 10
+    external:
+      - "dtrace-provider"
   prune:
     automatic: true
     number: 5 # Number of versions to keep

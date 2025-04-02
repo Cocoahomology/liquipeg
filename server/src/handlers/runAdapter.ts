@@ -10,7 +10,7 @@ const handler = async (event: any) => {
     await runAdapterToCurrentBlock(
       protocols[event.protocolIndex],
       { allowNullDbValues: false, onConflict: "update" },
-      false
+      event.updateImmutables
     );
   } catch (error) {
     logger.error({
