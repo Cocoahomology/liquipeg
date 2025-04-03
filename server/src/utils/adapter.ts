@@ -11,13 +11,20 @@ import type {
   TroveDataEntry,
   CoreImmutablesEntry,
   EventDataEntry,
+  TroveOwnerEntry,
 } from "./types";
 import { wait } from "./etherscan";
 import { Protocol } from "../data/types";
 import retry from "async-retry";
 import { ErrorLoggerService } from "./bunyan";
-import { insertEntriesFromAdapter, insertRecordedBlockEntries, insertBlockTimestampEntries } from "../db/write";
-import { getRecordedBlocksByProtocolId } from "../db/read";
+import {
+  insertEntriesFromAdapter,
+  insertRecordedBlockEntries,
+  insertBlockTimestampEntries,
+  insertEntries,
+  insertTroveOwners,
+} from "../db/write";
+import { getRecordedBlocksByProtocolId, getLatestCoreImmutables } from "../db/read";
 import { InsertOptions } from "../db/types";
 import { withTimeout } from "./async";
 import { getLatestBlockWithLogging } from "./blocks";
@@ -103,60 +110,6 @@ export const runAdapterSnapshot = async (
     ...insertOptions,
   };
 
-  if (adapter.fetchTroves) {
-    const fetchTrovesFns = adapter.fetchTroves;
-    console.log("Fetching Troves");
-    await Promise.allSettled(
-      Object.entries(fetchTrovesFns).map(async ([chain, fetchTrovesFn]) => {
-        try {
-          const block = await getLatestBlockWithLogging(chain, logger, id, "troveData");
-          const { number: blockNumber, timestamp: blockTimestamp } = block;
-          let troveDataEntries: TroveDataEntry[] = [];
-          await retry(
-            async () => {
-              const troveData = await fetchTrovesFn(
-                new sdk.ChainApi({
-                  chain: chain,
-                })
-              );
-              troveDataEntries = troveData.map((trove) => {
-                return {
-                  protocolId: id,
-                  blockNumber: blockNumber,
-                  troveManagerIndex: trove.troveManagerIndex,
-                  chain: chain,
-                  troveData: trove.troveData,
-                };
-              });
-            },
-            {
-              retries: 1,
-            }
-          );
-          await db.transaction(async (trx) => {
-            await insertEntriesFromAdapter("fetchTroves", troveDataEntries, finalInsertOptions, trx);
-            await insertBlockTimestampEntries(
-              chain,
-              [{ blockNumber, timestamp: blockTimestamp }],
-              finalInsertOptions,
-              trx
-            );
-          });
-        } catch (error) {
-          logger.error({
-            error: error instanceof Error ? error.message : String(error),
-            keyword: "missingValues",
-            table: "troveData",
-            chain: chain,
-            protocolId: id,
-            function: "runAdapterSnapshot",
-          });
-          console.error(`Fetching troves for ${protocolDbName} on chain ${chain} failed, skipped.`);
-        }
-      })
-    );
-  }
-
   if (adapter.fetchImmutables && updateImmutables) {
     const fetchImmutablesFns = adapter.fetchImmutables;
     console.log("Fetching Immutables");
@@ -208,6 +161,75 @@ export const runAdapterSnapshot = async (
             function: "runAdapterSnapshot",
           });
           console.error(`Fetching immutables for ${protocolDbName} on chain ${chain} failed, skipped.`);
+        }
+      })
+    );
+  }
+
+  if (adapter.fetchTroves) {
+    const fetchTrovesFns = adapter.fetchTroves;
+    console.log("Fetching Troves");
+    await Promise.allSettled(
+      Object.entries(fetchTrovesFns).map(async ([chain, fetchTrovesFn]) => {
+        try {
+          const block = await getLatestBlockWithLogging(chain, logger, id, "troveData");
+          const { number: blockNumber, timestamp: blockTimestamp } = block;
+          let troveDataEntries: TroveDataEntry[] = [];
+          await retry(
+            async () => {
+              const troveData = await fetchTrovesFn(
+                new sdk.ChainApi({
+                  chain: chain,
+                })
+              );
+              troveDataEntries = troveData.map((trove) => {
+                return {
+                  protocolId: id,
+                  blockNumber: blockNumber,
+                  troveManagerIndex: trove.troveManagerIndex,
+                  chain: chain,
+                  troveData: trove.troveData,
+                };
+              });
+            },
+            {
+              retries: 1,
+            }
+          );
+          await db.transaction(async (trx) => {
+            await insertEntriesFromAdapter("fetchTroves", troveDataEntries, finalInsertOptions, trx);
+            await insertBlockTimestampEntries(
+              chain,
+              [{ blockNumber, timestamp: blockTimestamp }],
+              finalInsertOptions,
+              trx
+            );
+          });
+          const troveOwners = await findTroveOwners(
+            protocol,
+            chain,
+            new sdk.ChainApi({ chain }),
+            troveDataEntries,
+            blockNumber
+          );
+          if (troveOwners) {
+            await insertEntries(
+              troveOwners,
+              { ...finalInsertOptions, onConflict: "ignore" },
+              insertTroveOwners,
+              "troveOwners"
+            );
+          }
+        } catch (error) {
+          logger.error({
+            error: error instanceof Error ? error.message : String(error),
+            keyword: "missingValues",
+            table: "troveData",
+            chain: chain,
+            protocolId: id,
+            function: "runAdapterSnapshot",
+          });
+          console.error(`Fetching troves for ${protocolDbName} on chain ${chain} failed, skipped.`);
         }
       })
     );
@@ -266,6 +288,112 @@ export const runAdapterSnapshot = async (
       })
     );
   }
+};
+
+export const findTroveOwners = async (
+  protocol: Protocol,
+  chain: string,
+  api: sdk.ChainApi,
+  troveDataEntries: TroveDataEntry[],
+  blockNumber?: number
+): Promise<TroveOwnerEntry[] | null> => {
+  const { id, protocolDbName } = protocol;
+  const logger = ErrorLoggerService.getInstance();
+
+  const coreImmutables = await getLatestCoreImmutables(id, chain);
+  if (!coreImmutables) {
+    const errString = `No core immutables found for ${protocolDbName} on chain ${chain}.`;
+    logger.error({ error: errString, keyword: "missingValues", protocolId: id, chain: chain });
+    return null;
+  }
+
+  const filteredTroveDataEntries = troveDataEntries.filter((entry) => entry.chain === chain);
+  if (filteredTroveDataEntries.length === 0) {
+    console.log(`No trove data entries found for ${protocolDbName} on chain ${chain}.`);
+    return null;
+  }
+
+  // Create a mapping from troveManagerIndex to a list of unique troveIds
+  const formattedTroveDataEntries = filteredTroveDataEntries.reduce((acc, entry) => {
+    if (!entry.troveData || !Array.isArray(entry.troveData)) {
+      return acc;
+    }
+    const troveManagerIndex = entry.troveManagerIndex;
+    if (acc[troveManagerIndex] === undefined) {
+      acc[troveManagerIndex] = [];
+    }
+    // Extract unique troveIds from the troveData array
+    entry.troveData.forEach((trove) => {
+      if (trove.troveId && !acc[troveManagerIndex].includes(trove.troveId)) {
+        acc[troveManagerIndex].push(trove.troveId);
+      }
+    });
+    return acc;
+  }, {} as Record<number, string[]>);
+
+  const allTroveOwnerEntries: TroveOwnerEntry[] = [];
+
+  await Promise.all(
+    Object.entries(formattedTroveDataEntries).map(async ([troveManagerIndex, troveIds]) => {
+      const troveManagerIndexNum = Number(troveManagerIndex);
+      const coreCollateralImmutables = coreImmutables.coreCollateralImmutables?.find(
+        (collateral) => collateral.troveManagerIndex === troveManagerIndexNum
+      );
+
+      if (!coreCollateralImmutables) {
+        const errString = `No core collateral immutables found for ${protocolDbName} on chain ${chain} for troveManagerIndex ${troveManagerIndex}.`;
+        logger.error({
+          error: errString,
+          keyword: "missingValues",
+          protocolId: id,
+          chain: chain,
+        });
+        return;
+      }
+
+      const { troveNFT } = coreCollateralImmutables;
+      try {
+        const troveOwnersList = await api.multiCall({
+          abi: "function ownerOf(uint256 troveId) view returns (address)",
+          calls: troveIds.map((troveId) => {
+            return { target: troveNFT, params: troveId };
+          }),
+        });
+
+        const troveOwners = troveIds.map((troveId, index) => ({
+          troveId,
+          ownerAddress: troveOwnersList[index],
+        }));
+
+        if (troveOwners.length > 0) {
+          const entry: TroveOwnerEntry = {
+            protocolId: id,
+            troveManagerIndex: troveManagerIndexNum,
+            chain,
+            troveOwners,
+          };
+          if (blockNumber !== undefined) {
+            entry.blockNumber = blockNumber;
+          }
+          allTroveOwnerEntries.push(entry);
+        }
+      } catch (error) {
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+          keyword: "missingValues",
+          protocolId: id,
+          chain: chain,
+          function: "findTroveOwners",
+        });
+      }
+    })
+  );
+
+  const totalTroveOwners = allTroveOwnerEntries.reduce((total, entry) => total + (entry.troveOwners?.length || 0), 0);
+
+  console.log(`Found ${totalTroveOwners} trove owners for ${protocolDbName} on chain ${chain}`);
+
+  return allTroveOwnerEntries.length > 0 ? allTroveOwnerEntries : null;
 };
 
 export const runTroveOperationsToCurrentBlock = async (protocol: Protocol, insertOptions: InsertOptions) => {

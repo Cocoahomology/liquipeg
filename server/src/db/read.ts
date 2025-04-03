@@ -143,7 +143,29 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
                 where: and(eq(blockTimestamps.blockNumber, maxBlock), eq(blockTimestamps.chain, chain)),
               });
 
-              // Transform entries by removing internal fields, fix snake case from raw sql result
+              const troveIds = entries.map((entry) => entry.trove_id);
+              const latestOwners: Record<string, string> = {};
+
+              const ownersData = (
+                await db.execute(sql`
+                WITH LatestOwners AS (
+                  SELECT 
+                    *,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY trove_id 
+                      ORDER BY block_number DESC
+                    ) as rn
+                  FROM trove_owners 
+                  WHERE trove_manager_pk = ${tm.pk} AND trove_id =ANY(${new Param(troveIds)})
+                )
+                SELECT trove_id, owner_address FROM LatestOwners WHERE rn = 1
+              `)
+              ).rows as unknown as { trove_id: string; owner_address: string }[];
+
+              ownersData.forEach((owner) => {
+                latestOwners[owner.trove_id] = owner.owner_address;
+              });
+
               const troveDataEntries = entries.map(
                 ({
                   block_number,
@@ -166,6 +188,7 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
                   annualInterestRate,
                   interestBatchManager,
                   batchDebtShares,
+                  ownerAddress: latestOwners[troveId] || null,
                   ...rest,
                 })
               );

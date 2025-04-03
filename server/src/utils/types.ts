@@ -14,6 +14,7 @@ export type TroveDataByManager = {
 };
 
 type TroveData = {
+  ownerAddress?: string;
   troveId: string;
   debt: string;
   entireDebt: string;
@@ -176,4 +177,17 @@ export type HourlyTroveDataSummaryEntry = {
     [statusCode: string]: number;
   };
   totalTroves: number;
+};
+
+export type TroveOwnerEntry = {
+  protocolId?: number;
+  blockNumber?: number;
+  troveManagerIndex: number;
+  chain: string;
+  troveOwners: TroveOwner[];
+};
+
+export type TroveOwner = {
+  troveId: string;
+  ownerAddress: string;
 };

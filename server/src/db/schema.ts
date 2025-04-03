@@ -68,6 +68,27 @@ export const troveData = table(
   ]
 );
 
+export const troveOwners = table(
+  "trove_owners",
+  {
+    pk: d.integer().primaryKey().generatedAlwaysAsIdentity(),
+    troveId: d.varchar({ length: 96 }).notNull(),
+    troveManagerPk: d
+      .integer()
+      .references(() => troveManagers.pk, { onDelete: "cascade" })
+      .notNull(),
+    ownerAddress: d.varchar({ length: 42 }).notNull(),
+    blockNumber: d.integer().notNull(),
+  },
+  (troveOwners) => [
+    d
+      .uniqueIndex("trove_owners_manager_id_block_number_unique_idx")
+      .on(troveOwners.troveManagerPk, troveOwners.troveId, troveOwners.blockNumber),
+    d.index("trove_owners_trove_id_idx").on(troveOwners.troveId),
+    d.index("trove_owners_manager_id_idx").on(troveOwners.troveManagerPk),
+  ]
+);
+
 export const eventData = table(
   "event_data",
   {
@@ -385,6 +406,18 @@ export const troveDataRelations = relations(troveData, ({ one }) => ({
     fields: [troveData.troveManagerPk],
     references: [troveManagers.pk],
   }),
+  owner: one(troveOwners, {
+    fields: [troveData.troveId, troveData.troveManagerPk],
+    references: [troveOwners.troveId, troveOwners.troveManagerPk],
+  }),
+}));
+
+export const troveOwnersRelations = relations(troveOwners, ({ one, many }) => ({
+  troves: many(troveData),
+  troveManager: one(troveManagers, {
+    fields: [troveOwners.troveManagerPk],
+    references: [troveManagers.pk],
+  }),
 }));
 
 export const eventDataRelations = relations(eventData, ({ one }) => ({
@@ -454,6 +487,7 @@ const tables = {
   protocols,
   troveManagers,
   troveData,
+  troveOwners,
   eventData,
   coreImmutables,
   coreColImmutables,
@@ -472,6 +506,7 @@ export type TableName =
   | "protocols"
   | "troveManagers"
   | "troveData"
+  | "troveOwners"
   | "eventData"
   | "coreImmutables"
   | "coreColImmutables"
