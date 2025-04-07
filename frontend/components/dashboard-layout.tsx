@@ -25,12 +25,14 @@ interface DashboardLayoutProps {
   data: any[];
   customChartPanel?: ReactNode;
   disableChartControls?: boolean;
+  customTitle?: string;
 }
 
 export function DashboardLayout({
   data,
   customChartPanel,
   disableChartControls = false,
+  customTitle,
 }: DashboardLayoutProps) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -141,7 +143,7 @@ export function DashboardLayout({
               onClick={addChart}
             >
               <PlusCircle className="mr-2 h-4 w-4" />
-              Add Chart
+              Add Chart/List
             </Button>
           </div>
         ) : (
@@ -162,17 +164,17 @@ export function DashboardLayout({
     );
   };
 
+  // Function to determine the title to display
+  const getTitle = () => {
+    if (customTitle) return customTitle;
+    if (selectedItem)
+      return `${selectedItem.name || selectedItem.owner}'s Analytics`;
+    return "Analytics";
+  };
+
   return (
     <div className="flex w-full min-h-svh">
       <div className="flex-1 flex flex-col w-full overflow-hidden">
-        {/* Header */}
-        <header className="h-12 border-b flex items-center px-4 justify-between">
-          <div className="text-sm font-medium">Dashboard</div>
-          <div className="flex items-center space-x-2">
-            {/* Existing header actions */}
-          </div>
-        </header>
-
         {/* Content */}
         <main className="flex-1 overflow-hidden p-4 w-full">
           <div className="h-full min-h-[600px]">
@@ -194,17 +196,11 @@ export function DashboardLayout({
 
                 <Card className="flex-1 min-h-[300px]">
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>
-                      {selectedItem
-                        ? `${
-                            selectedItem.name || selectedItem.owner
-                          }'s Analytics`
-                        : "Transaction Analytics"}
-                    </CardTitle>
+                    <CardTitle>{getTitle()}</CardTitle>
                     {!disableChartControls && (
                       <Button variant="outline" size="sm" onClick={addChart}>
                         <PlusCircle className="mr-2 h-4 w-4" />
-                        Add Chart
+                        Add Chart/List
                       </Button>
                     )}
                   </CardHeader>
@@ -217,63 +213,66 @@ export function DashboardLayout({
               </div>
             ) : (
               // Resizable panels for desktop
-              <ResizablePanelGroup
-                direction="horizontal"
-                onLayout={onLayout}
-                className="h-full w-full"
-              >
-                <ResizablePanel defaultSize={getDefaultSizes()[0]} minSize={30}>
-                  <Card className="h-full border-r-0 rounded-r-none flex flex-col">
-                    {/* Removed CardHeader */}
-                    <CardContent className="flex-1 p-6">
-                      {/* Increased padding to compensate for missing header */}
-                      <ScrollArea className="h-[calc(100vh-120px)]">
-                        <ExpandableTable
-                          data={data}
-                          onSelectItem={setSelectedItem}
-                          dataType={dataType}
-                        />
-                      </ScrollArea>
-                    </CardContent>
-                  </Card>
-                </ResizablePanel>
-
-                <ResizableHandle withHandle className="bg-border" />
-
-                <ResizablePanel
-                  defaultSize={getDefaultSizes()[1]}
-                  minSize={30}
-                  onResize={() => {
-                    // Trigger chart resize when panel is resized
-                    if (typeof window !== "undefined") {
-                      window.dispatchEvent(new Event("resize"));
-                    }
-                  }}
+              <div className="h-full w-full border rounded-lg overflow-hidden">
+                <ResizablePanelGroup
+                  direction="horizontal"
+                  onLayout={onLayout}
+                  className="h-full w-full"
                 >
-                  <Card className="h-full border-l-0 rounded-l-none flex flex-col">
-                    <CardHeader className="sticky top-0 z-10 bg-card border-b flex flex-row items-center justify-between flex-shrink-0">
-                      <CardTitle>
-                        {selectedItem
-                          ? `${
-                              selectedItem.name || selectedItem.owner
-                            }'s Analytics`
-                          : "Transaction Analytics"}
-                      </CardTitle>
-                      {!disableChartControls && (
-                        <Button variant="outline" size="sm" onClick={addChart}>
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Add Chart
-                        </Button>
-                      )}
-                    </CardHeader>
-                    <CardContent className="p-4 flex-1">
-                      <ScrollArea className="h-[calc(100vh-120px)]">
-                        {customChartPanel || renderChartContent()}
-                      </ScrollArea>
-                    </CardContent>
-                  </Card>
-                </ResizablePanel>
-              </ResizablePanelGroup>
+                  <ResizablePanel
+                    defaultSize={getDefaultSizes()[0]}
+                    minSize={30}
+                  >
+                    <div className="h-full flex flex-col border-r">
+                      {/* No more Card - just a plain div with border-right */}
+                      <div className="flex-1 p-6">
+                        <ScrollArea className="h-[calc(100vh-120px)]">
+                          <ExpandableTable
+                            data={data}
+                            onSelectItem={setSelectedItem}
+                            dataType={dataType}
+                          />
+                        </ScrollArea>
+                      </div>
+                    </div>
+                  </ResizablePanel>
+
+                  <ResizableHandle withHandle className="bg-border" />
+
+                  <ResizablePanel
+                    defaultSize={getDefaultSizes()[1]}
+                    minSize={30}
+                    onResize={() => {
+                      // Trigger chart resize when panel is resized
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new Event("resize"));
+                      }
+                    }}
+                  >
+                    <div className="h-full flex flex-col">
+                      {/* No more Card - just a plain div */}
+                      <div className="sticky top-0 z-10 bg-card border-b flex flex-row items-center justify-between flex-shrink-0 p-4">
+                        <h3 className="text-lg font-semibold">{getTitle()}</h3>
+                        {!disableChartControls && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addChart}
+                          >
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Chart/List
+                          </Button>
+                        )}
+                      </div>
+                      <div className="p-4 flex-1">
+                        <ScrollArea className="h-[calc(100vh-120px)]">
+                          {customChartPanel || renderChartContent()}
+                        </ScrollArea>
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </div>
             )}
           </div>
         </main>

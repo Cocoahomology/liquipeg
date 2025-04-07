@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import {
   generateTrovesData,
@@ -26,7 +26,13 @@ const CollateralCards = ({
   const collateralStats = useMemo(() => {
     const stats: Record<
       string,
-      { totalDebt: number; avgPrice: number; avgCR: number; minCR: number }
+      {
+        totalDebt: number;
+        avgPrice: number;
+        avgCR: number;
+        minCR: number;
+        totalCollateral: number; // Add total collateral
+      }
     > = {};
 
     collaterals.forEach((collateral) => {
@@ -38,6 +44,10 @@ const CollateralCards = ({
 
       const totalDebt = trovesWithCollateral.reduce(
         (sum, trove) => sum + trove.debtAmount,
+        0
+      );
+      const totalCollateral = trovesWithCollateral.reduce(
+        (sum, trove) => sum + trove.collateralAmount,
         0
       );
       const avgPrice =
@@ -67,6 +77,7 @@ const CollateralCards = ({
         avgPrice,
         avgCR,
         minCR,
+        totalCollateral,
       };
     });
 
@@ -77,17 +88,39 @@ const CollateralCards = ({
     <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2 p-4">
       {collaterals.map((collateral) => (
         <Card key={collateral} className="w-full">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-xl">{collateral}</CardTitle>
+            <span className="text-sm text-muted-foreground">
+              {troves.filter((t) => t.collateralType === collateral).length ===
+              1
+                ? "1 trove"
+                : `${
+                    troves.filter((t) => t.collateralType === collateral).length
+                  } troves`}
+            </span>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">
+                  Collateral:
+                </span>
+                <span className="font-medium">
+                  {Math.round(collateralStats[collateral]?.totalCollateral)}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">
                   Total Debt:
                 </span>
                 <span className="font-medium">
                   ${collateralStats[collateral]?.totalDebt.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">CR:</span>
+                <span className="font-medium">
+                  {collateralStats[collateral]?.avgCR.toFixed(0)}%
                 </span>
               </div>
               <div className="flex justify-between">
@@ -98,12 +131,6 @@ const CollateralCards = ({
                     undefined,
                     { maximumFractionDigits: 2 }
                   )}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">CR:</span>
-                <span className="font-medium">
-                  {collateralStats[collateral]?.avgCR.toFixed(0)}%
                 </span>
               </div>
               <div className="flex justify-between">
@@ -127,6 +154,11 @@ export function TrovesPage() {
   // Changed to null initial value instead of "Aave"
   const [selectedProtocol, setSelectedProtocol] = useState<string | null>(null);
   const [selectedCollaterals, setSelectedCollaterals] = useState<string[]>([]);
+
+  // Reset selected collaterals when protocol changes
+  useEffect(() => {
+    setSelectedCollaterals([]);
+  }, [selectedProtocol]);
 
   const availableCollaterals = useMemo(() => {
     if (!selectedProtocol) return [];
@@ -209,6 +241,7 @@ export function TrovesPage() {
           data={filteredTroves}
           customChartPanel={CustomChartPanel}
           disableChartControls={true}
+          customTitle="Collaterals"
         />
       ) : (
         <Card className="w-full">

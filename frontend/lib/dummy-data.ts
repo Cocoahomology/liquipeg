@@ -5,6 +5,7 @@ export type Protocol = {
   id: string;
   name: string;
   category: string;
+  chain: string; // Added chain field
   tvl: number;
   users: number;
   dailyVolume: number;
@@ -293,6 +294,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "1",
       name: "Aave",
       category: "Lending",
+      chain: "Ethereum", // Added chain value
       tvl: 5240000000,
       users: 324500,
       dailyVolume: 125000000,
@@ -304,6 +306,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "2",
       name: "Uniswap",
       category: "DEX",
+      chain: "Ethereum", // Added chain value
       tvl: 7850000000,
       users: 892300,
       dailyVolume: 345000000,
@@ -315,6 +318,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "3",
       name: "Compound",
       category: "Lending",
+      chain: "Ethereum", // Added chain value
       tvl: 3120000000,
       users: 187600,
       dailyVolume: 78000000,
@@ -326,6 +330,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "4",
       name: "Curve",
       category: "DEX",
+      chain: "Ethereum", // Added chain value
       tvl: 4560000000,
       users: 156700,
       dailyVolume: 210000000,
@@ -337,6 +342,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "5",
       name: "MakerDAO",
       category: "Lending",
+      chain: "Ethereum", // Added chain value
       tvl: 6780000000,
       users: 134200,
       dailyVolume: 95000000,
@@ -348,6 +354,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "6",
       name: "Synthetix",
       category: "Derivatives",
+      chain: "Optimism", // Added chain value
       tvl: 1950000000,
       users: 87300,
       dailyVolume: 65000000,
@@ -359,6 +366,7 @@ export const generateProtocolsData = (): Protocol[] => {
       id: "7",
       name: "Balancer",
       category: "DEX",
+      chain: "Polygon", // Added chain value
       tvl: 1230000000,
       users: 76500,
       dailyVolume: 42000000,

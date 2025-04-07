@@ -24,7 +24,12 @@ export default function Home() {
         >
           <TabsList className="grid w-full md:w-[400px] grid-cols-3">
             <TabsTrigger value="protocols">Protocols</TabsTrigger>
-            <TabsTrigger value="yields">Yields</TabsTrigger>
+            <TabsTrigger value="yields" disabled className="relative">
+              Yields
+              <span className="absolute -top-1 right-1 text-[10px] px-1.5 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-medium">
+                Soon!
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="troves">Troves</TabsTrigger>
           </TabsList>
         </Tabs>

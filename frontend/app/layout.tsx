@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
+import { Providers } from "@/components/providers";
 
 const geistSans = Geist({
   subsets: ["latin"],
@@ -27,16 +27,11 @@ export default function RootLayout({
       <body
         className={`min-h-svh font-sans antialiased ${geistSans.variable} ${geistMono.variable}`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <Providers>
           <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8">
             {children}
           </div>
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

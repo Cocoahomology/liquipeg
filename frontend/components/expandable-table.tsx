@@ -201,7 +201,7 @@ const ProtocolSubTable = ({
             variant="ghost"
             size="icon"
             onClick={() => onSelectTransaction(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
@@ -335,7 +335,7 @@ const YieldSubTable = ({
             variant="ghost"
             size="icon"
             onClick={() => onSelectTransaction(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
@@ -469,7 +469,7 @@ const TroveSubTable = ({
             variant="ghost"
             size="icon"
             onClick={() => onSelectTransaction(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
@@ -582,6 +582,10 @@ export function ExpandableTable({
       header: "Category",
     },
     {
+      accessorKey: "chain",
+      header: "Chain",
+    },
+    {
       accessorKey: "tvl",
       header: "TVL",
       cell: ({ row }) => {
@@ -649,7 +653,7 @@ export function ExpandableTable({
             variant="ghost"
             size="icon"
             onClick={() => onSelectItem(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
@@ -762,7 +766,7 @@ export function ExpandableTable({
             variant="ghost"
             size="icon"
             onClick={() => onSelectItem(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
@@ -858,7 +862,7 @@ export function ExpandableTable({
             variant="ghost"
             size="icon"
             onClick={() => onSelectItem(row.original)}
-            title="View Chart"
+            title="View Analytics"
             className="p-0 h-8 w-8"
           >
             <BarChart2 className="h-4 w-4" />
