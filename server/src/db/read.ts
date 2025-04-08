@@ -767,11 +767,8 @@ export async function getDailyPricesAndRates(
 
             if (hourlySamplePriceData.length > 0) {
               const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
-
-              uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
-
-              delete priceDataByTimestamp[latestTimestamp];
-              priceDataByTimestamp[samplePoint.targetTimestamp] = hourlySamplePriceData[0];
+              // Keep the same timestamp but replace the data
+              priceDataByTimestamp[latestTimestamp] = hourlySamplePriceData[0];
             }
           }
         }
@@ -980,7 +977,6 @@ export async function getDailyPoolData(
           if (latestHourlySample.length > 0) {
             const samplePoint = latestHourlySample[0];
             const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
-            uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
 
             // Handle pool data update if block number exists
             if (samplePoint.colPoolDataBlockNumber) {
@@ -992,9 +988,8 @@ export async function getDailyPoolData(
                 .limit(1);
 
               if (hourlySamplePoolData.length > 0) {
-                delete poolDataByTimestamp[latestTimestamp];
                 const { pk, troveManagerPk, ...formattedData } = hourlySamplePoolData[0];
-                poolDataByTimestamp[samplePoint.targetTimestamp] = formattedData;
+                poolDataByTimestamp[latestTimestamp] = formattedData;
               }
             }
 
@@ -1022,8 +1017,7 @@ export async function getDailyPoolData(
                 .limit(1);
 
               if (hourlySamplePriceData.length > 0) {
-                delete (poolResult.priceData as Record<number, any>)[latestTimestamp];
-                (poolResult.priceData as Record<number, any>)[samplePoint.targetTimestamp] = hourlySamplePriceData[0];
+                (poolResult.priceData as Record<number, any>)[latestTimestamp] = hourlySamplePriceData[0];
               }
             }
           }
@@ -1154,12 +1148,8 @@ export async function getDailyPoolData(
               if (hourlySamplePoolData.length > 0) {
                 const latestTimestamp = uniqueDates[uniqueDates.length - 1].timestamp;
 
-                uniqueDates[uniqueDates.length - 1].timestamp = samplePoint.targetTimestamp;
-
-                delete poolDataByTimestamp[latestTimestamp];
-
                 const { pk, protocolPk, totalCollaterals, ...formattedData } = hourlySamplePoolData[0];
-                poolDataByTimestamp[samplePoint.targetTimestamp] = formattedData;
+                poolDataByTimestamp[latestTimestamp] = formattedData;
               }
             }
           }
@@ -1278,12 +1268,9 @@ export async function getDailyTroveDataSummaries(
           const latestHourly = latestHourlySummary[0];
           const latestDailyTimestamp = formattedDates[formattedDates.length - 1].timestamp;
 
-          // Replace the latest daily entry with the latest hourly entry
-          formattedDates[formattedDates.length - 1].timestamp = latestHourly.targetTimestamp;
-          delete summaryDataByTimestamp[latestDailyTimestamp];
-
+          // Keep the original daily timestamp but update the data
           const { targetTimestamp, date, hour, ...hourlyData } = latestHourly;
-          summaryDataByTimestamp[targetTimestamp] = hourlyData;
+          summaryDataByTimestamp[latestDailyTimestamp] = hourlyData;
         }
       }
 

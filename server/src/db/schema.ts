@@ -196,6 +196,7 @@ export const colPoolData = table(
     getCollBalanceActivePool: d.varchar({ length: 96 }).notNull(),
     getCollBalanceDefaultPool: d.varchar({ length: 96 }).notNull(),
     getCollBalanceStabilityPool: d.varchar({ length: 96 }).notNull(),
+    // Sum of following 2 are total BOLD in SP
     getTotalBoldDeposits: d.varchar({ length: 96 }).notNull(),
     getYieldGainsOwed: d.varchar({ length: 96 }).notNull(),
     getYieldGainsPending: d.varchar({ length: 96 }).notNull(),
