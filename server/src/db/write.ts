@@ -21,6 +21,7 @@ import {
   RecordedBlocksEntryWithChain,
   CollateralPricesAndRatesEntry,
   HourlyTroveDataSummaryEntry,
+  TroveOwnerEntry,
 } from "../utils/types";
 import { protocols, troveManagers } from "./schema";
 import { eq, lt, gt, gte, lte, and, sql, Param } from "drizzle-orm";
@@ -104,7 +105,7 @@ async function getTroveManagerPk(trx: any, protocolPk: number, troveManagerIndex
   return result.pk;
 }
 
-async function insertEntries(
+export async function insertEntries(
   data: any[],
   options: InsertOptions,
   insertFn: (
@@ -537,6 +538,75 @@ async function insertEventData(
           timestampMissing: true,
         })
         .onConflictDoNothing();
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      logFirstError(error, chain);
+      throw error;
+    }
+    throw error;
+  }
+}
+
+export async function insertTroveOwners(
+  trx: any,
+  troveOwnerEntry: TroveOwnerEntry,
+  protocolPk: number,
+  onConflict: "update" | "ignore",
+  blockNumber?: number
+) {
+  const troveOwnersTable = getTable("troveOwners");
+  const logger = ErrorLoggerService.getInstance();
+  let hasLoggedError = false;
+
+  const logFirstError = (error: Error, chain?: string) => {
+    if (!hasLoggedError) {
+      logger.error({
+        error: error.message,
+        keyword: "critical",
+        table: "troveOwners",
+        chain,
+      });
+      hasLoggedError = true;
+    }
+  };
+
+  const { troveManagerIndex, troveOwners: owners, chain } = troveOwnerEntry;
+
+  try {
+    const troveManagerPk = await getTroveManagerPk(trx, protocolPk, troveManagerIndex);
+
+    if (onConflict === "ignore") {
+      await trx
+        .insert(troveOwnersTable)
+        .values(
+          owners.map((owner) => ({
+            troveId: owner.troveId,
+            troveManagerPk,
+            ownerAddress: owner.ownerAddress,
+            blockNumber,
+          }))
+        )
+        .onConflictDoNothing({
+          target: [troveOwnersTable.troveManagerPk, troveOwnersTable.troveId, troveOwnersTable.blockNumber],
+        });
+    } else {
+      await trx
+        .insert(troveOwnersTable)
+        .values(
+          owners.map((owner) => ({
+            troveId: owner.troveId,
+            troveManagerPk,
+            ownerAddress: owner.ownerAddress,
+            blockNumber,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [troveOwnersTable.troveManagerPk, troveOwnersTable.troveId, troveOwnersTable.blockNumber],
+          set: {
+            ownerAddress: sql`excluded.owner_address`,
+          },
+        });
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -1481,11 +1551,12 @@ export async function fillHourlyTroveDataSummary(
       const status = entry.status.toString();
       statusCounts[status] = (statusCounts[status] || 0) + 1;
 
-      // if (status === "1") {
-      const interestRate = parseFloat(entry.annualInterestRate) / 10 ** 16;
-      if (interestRate > 0) {
-        totalInterestRate += interestRate;
-        nonZeroInterestRateCount++;
+      if (status === "1") {
+        const interestRate = parseFloat(entry.annualInterestRate) / 10 ** 16;
+        if (interestRate > 0) {
+          totalInterestRate += interestRate;
+          nonZeroInterestRateCount++;
+        }
       }
 
       // Calculate collateral ratio if possible
@@ -1512,7 +1583,6 @@ export async function fillHourlyTroveDataSummary(
       } else {
         console.log("No colUSDPriceFeed found, skipping col ratio calculation.");
       }
-      // }
     });
 
     const avgInterestRate =
@@ -1553,28 +1623,32 @@ export async function fillHourlyTroveDataSummary(
   }
 }
 
+// FIX: remove logging
 export async function fillTimeSamplePoints(targetTimestamp: number, hourly: boolean = false) {
   const logger = ErrorLoggerService.getInstance();
   try {
-    console.log(
-      `Starting fillTimeSamplePoints with target timestamp: ${targetTimestamp} (${new Date(
-        targetTimestamp * 1000
-      ).toISOString()})`
-    );
+    console.log(`========== STARTING FILL TIME SAMPLE POINTS ==========`);
+    console.log(`Target timestamp: ${targetTimestamp} (${new Date(targetTimestamp * 1000).toISOString()})`);
+    console.log(`Mode: ${hourly ? "Hourly" : "Daily"}`);
 
     const startTimestamp = !hourly
       ? getTimestampAtStartOfDayUTC(targetTimestamp)
       : getTimestampAtStartOfHour(targetTimestamp);
+    console.log(`Adjusted start timestamp: ${startTimestamp} (${new Date(startTimestamp * 1000).toISOString()})`);
 
     const hour = !hourly ? 0 : new Date(targetTimestamp * 1000).getUTCHours();
+    console.log(`Hour value: ${hour}`);
 
+    console.log(`Fetching protocol entries from database...`);
     const protocolEntries = await db
       .select({
         pk: protocols.pk,
         chain: protocols.chain,
       })
       .from(protocols);
+    console.log(`Found ${protocolEntries.length} protocol entries`);
 
+    console.log(`Fetching trove manager entries from database...`);
     const troveManagerEntries = await db
       .select({
         pk: troveManagers.pk,
@@ -1582,12 +1656,15 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
       })
       .from(troveManagers)
       .innerJoin(protocols, eq(troveManagers.protocolPk, protocols.pk));
+    console.log(`Found ${troveManagerEntries.length} trove manager entries`);
 
     const samplePoints = [];
 
-    console.log(`Processing ${protocolEntries.length} protocols...`);
+    console.log(`\n===== PROCESSING PROTOCOLS =====`);
     for (const [index, { pk: protocolPk, chain }] of protocolEntries.entries()) {
+      console.log(`[${index + 1}/${protocolEntries.length}] Processing protocol pk=${protocolPk} on chain=${chain}`);
       try {
+        console.log(`  Getting key block for timestamp ${startTimestamp} on chain ${chain}...`);
         const keyBlock = await retry(
           async () => withTimeout(sdk.blocks.getBlock(chain, startTimestamp), { milliseconds: 15000 }),
           {
@@ -1597,12 +1674,15 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
           }
         );
         const keyBlockNumber = keyBlock.number;
+        console.log(`  Got key block number: ${keyBlockNumber}`);
 
+        console.log(`  Finding closest GT core pool data block entry...`);
         let corePoolDataBlockNumber = await findClosestGtBlockEntry(
           corePoolData,
           keyBlockNumber,
           eq(corePoolData.protocolPk, protocolPk)
         );
+        console.log(`  Closest GT core pool data block: ${corePoolDataBlockNumber || "none found"}`);
 
         const provider = await sdk.getProvider(chain);
         let corePoolDataBlockTimestamp;
@@ -1610,8 +1690,10 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
         let isValidBlock = false;
 
         const endTimestamp = !hourly ? startTimestamp + 24 * 60 * 60 : startTimestamp + 60 * 60;
+        console.log(`  End timestamp cutoff: ${endTimestamp} (${new Date(endTimestamp * 1000).toISOString()})`);
 
         if (corePoolDataBlockNumber !== undefined) {
+          console.log(`  Fetching block details for block ${corePoolDataBlockNumber}...`);
           corePoolDataBlock = await retry(
             async () => withTimeout(provider.getBlock(corePoolDataBlockNumber as number), { milliseconds: 15000 }),
             {
@@ -1624,17 +1706,23 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
           if (corePoolDataBlock) {
             corePoolDataBlockTimestamp = corePoolDataBlock.timestamp;
             isValidBlock = corePoolDataBlock.timestamp < endTimestamp;
+            console.log(`  GT block timestamp: ${corePoolDataBlockTimestamp}, is valid: ${isValidBlock}`);
+          } else {
+            console.log(`  Failed to fetch GT block details`);
           }
         }
 
         if (!isValidBlock) {
+          console.log(`  Finding closest LT core pool data block entry as fallback...`);
           corePoolDataBlockNumber = await findClosestLtBlockEntry(
             corePoolData,
             keyBlockNumber,
             eq(corePoolData.protocolPk, protocolPk)
           );
+          console.log(`  Closest LT core pool data block: ${corePoolDataBlockNumber || "none found"}`);
 
           if (corePoolDataBlockNumber !== undefined) {
+            console.log(`  Fetching block details for LT block ${corePoolDataBlockNumber}...`);
             corePoolDataBlock = await retry(
               async () => withTimeout(provider.getBlock(corePoolDataBlockNumber as number), { milliseconds: 15000 }),
               {
@@ -1647,12 +1735,17 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
             if (corePoolDataBlock) {
               corePoolDataBlockTimestamp = corePoolDataBlock.timestamp;
               const minTimestamp = !hourly ? startTimestamp - 24 * 60 * 60 : startTimestamp - 60 * 60;
+              console.log(`  Min timestamp cutoff: ${minTimestamp} (${new Date(minTimestamp * 1000).toISOString()})`);
               isValidBlock = corePoolDataBlock.timestamp >= minTimestamp;
+              console.log(`  LT block timestamp: ${corePoolDataBlockTimestamp}, is valid: ${isValidBlock}`);
+            } else {
+              console.log(`  Failed to fetch LT block details`);
             }
           }
         }
 
         if (isValidBlock && corePoolDataBlock) {
+          console.log(`  Adding protocol sample point with core pool data block ${corePoolDataBlock.number}`);
           samplePoints.push({
             date: new Date(startTimestamp * 1000),
             hour: hour,
@@ -1660,10 +1753,12 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
             protocolPk,
             corePoolDataBlockNumber: corePoolDataBlock.number ?? undefined,
           });
+        } else {
+          console.log(`  No valid block found for protocol pk=${protocolPk}, skipping`);
         }
       } catch (error) {
         const errString = `Failed to process protocol pk ${protocolPk} on chain ${chain}: ${error}`;
-        console.error(errString);
+        console.error(`  ERROR: ${errString}`);
         logger.error({
           error: errString,
           keyword: "missingValues",
@@ -1674,8 +1769,13 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
       }
     }
 
+    console.log(`\n===== PROCESSING TROVE MANAGERS =====`);
     for (const [index, { pk: troveManagerPk, chain }] of troveManagerEntries.entries()) {
+      console.log(
+        `[${index + 1}/${troveManagerEntries.length}] Processing trove manager pk=${troveManagerPk} on chain=${chain}`
+      );
       try {
+        console.log(`  Getting key block for timestamp ${startTimestamp} on chain ${chain}...`);
         const keyBlock = await retry(
           async () => withTimeout(sdk.blocks.getBlock(chain, startTimestamp), { milliseconds: 15000 }),
           {
@@ -1686,22 +1786,32 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
         );
 
         const keyBlockNumber = keyBlock.number;
+        console.log(`  Got key block number: ${keyBlockNumber}`);
         const provider = await sdk.getProvider(chain);
 
         const endTimestamp = !hourly ? startTimestamp + 24 * 60 * 60 : startTimestamp + 60 * 60;
         const minTimestamp = !hourly ? startTimestamp - 24 * 60 * 60 : startTimestamp - 60 * 60;
+        console.log(
+          `  Time window: ${new Date(minTimestamp * 1000).toISOString()} to ${new Date(
+            endTimestamp * 1000
+          ).toISOString()}`
+        );
 
+        console.log(`  Finding closest GT col pool data block entry...`);
         let colPoolDataBlockNumber = await findClosestGtBlockEntry(
           colPoolData,
           keyBlockNumber,
           eq(colPoolData.troveManagerPk, troveManagerPk)
         );
+        console.log(`  Closest GT col pool data block: ${colPoolDataBlockNumber || "none found"}`);
 
+        console.log(`  Finding closest GT prices and rates block entry...`);
         let pricesAndRatesBlockNumber = await findClosestGtBlockEntry(
           pricesAndRates,
           keyBlockNumber,
           eq(pricesAndRates.troveManagerPk, troveManagerPk)
         );
+        console.log(`  Closest GT prices and rates block: ${pricesAndRatesBlockNumber || "none found"}`);
 
         let colPoolDataBlock, pricesAndRatesBlock;
         let colPoolDataBlockTimestamp, pricesAndRatesBlockTimestamp;
@@ -1709,6 +1819,7 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
         let isValidPricesBlock = false;
 
         if (colPoolDataBlockNumber !== undefined) {
+          console.log(`  Fetching block details for col pool block ${colPoolDataBlockNumber}...`);
           colPoolDataBlock = await retry(
             async () => withTimeout(provider.getBlock(colPoolDataBlockNumber as number), { milliseconds: 15000 }),
             {
@@ -1721,17 +1832,25 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
           if (colPoolDataBlock) {
             colPoolDataBlockTimestamp = colPoolDataBlock.timestamp;
             isValidColPoolBlock = colPoolDataBlock.timestamp < endTimestamp;
+            console.log(
+              `  GT col pool block timestamp: ${colPoolDataBlockTimestamp}, is valid: ${isValidColPoolBlock}`
+            );
+          } else {
+            console.log(`  Failed to fetch GT col pool block details`);
           }
         }
 
         if (!isValidColPoolBlock) {
+          console.log(`  Finding closest LT col pool data block entry as fallback...`);
           colPoolDataBlockNumber = await findClosestLtBlockEntry(
             colPoolData,
             keyBlockNumber,
             eq(colPoolData.troveManagerPk, troveManagerPk)
           );
+          console.log(`  Closest LT col pool data block: ${colPoolDataBlockNumber || "none found"}`);
 
           if (colPoolDataBlockNumber !== undefined) {
+            console.log(`  Fetching block details for LT col pool block ${colPoolDataBlockNumber}...`);
             colPoolDataBlock = await retry(
               async () => withTimeout(provider.getBlock(colPoolDataBlockNumber as number), { milliseconds: 15000 }),
               {
@@ -1744,11 +1863,17 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
             if (colPoolDataBlock) {
               colPoolDataBlockTimestamp = colPoolDataBlock.timestamp;
               isValidColPoolBlock = colPoolDataBlock.timestamp >= minTimestamp;
+              console.log(
+                `  LT col pool block timestamp: ${colPoolDataBlockTimestamp}, is valid: ${isValidColPoolBlock}`
+              );
+            } else {
+              console.log(`  Failed to fetch LT col pool block details`);
             }
           }
         }
 
         if (pricesAndRatesBlockNumber !== undefined) {
+          console.log(`  Fetching block details for prices and rates block ${pricesAndRatesBlockNumber}...`);
           pricesAndRatesBlock = await retry(
             async () => withTimeout(provider.getBlock(pricesAndRatesBlockNumber as number), { milliseconds: 15000 }),
             {
@@ -1761,17 +1886,25 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
           if (pricesAndRatesBlock) {
             pricesAndRatesBlockTimestamp = pricesAndRatesBlock.timestamp;
             isValidPricesBlock = pricesAndRatesBlock.timestamp < endTimestamp;
+            console.log(
+              `  GT prices block timestamp: ${pricesAndRatesBlockTimestamp}, is valid: ${isValidPricesBlock}`
+            );
+          } else {
+            console.log(`  Failed to fetch GT prices block details`);
           }
         }
 
         if (!isValidPricesBlock) {
+          console.log(`  Finding closest LT prices and rates block entry as fallback...`);
           pricesAndRatesBlockNumber = await findClosestLtBlockEntry(
             pricesAndRates,
             keyBlockNumber,
             eq(pricesAndRates.troveManagerPk, troveManagerPk)
           );
+          console.log(`  Closest LT prices and rates block: ${pricesAndRatesBlockNumber || "none found"}`);
 
           if (pricesAndRatesBlockNumber !== undefined) {
+            console.log(`  Fetching block details for LT prices block ${pricesAndRatesBlockNumber}...`);
             pricesAndRatesBlock = await retry(
               async () => withTimeout(provider.getBlock(pricesAndRatesBlockNumber as number), { milliseconds: 15000 }),
               {
@@ -1784,6 +1917,11 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
             if (pricesAndRatesBlock) {
               pricesAndRatesBlockTimestamp = pricesAndRatesBlock.timestamp;
               isValidPricesBlock = pricesAndRatesBlock.timestamp >= minTimestamp;
+              console.log(
+                `  LT prices block timestamp: ${pricesAndRatesBlockTimestamp}, is valid: ${isValidPricesBlock}`
+              );
+            } else {
+              console.log(`  Failed to fetch LT prices block details`);
             }
           }
         }
@@ -1794,6 +1932,7 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
         };
 
         if (validBlocks.colPoolDataBlock || validBlocks.pricesAndRatesBlock) {
+          console.log(`  Adding trove manager sample point with valid blocks: ${JSON.stringify(validBlocks)}`);
           samplePoints.push({
             date: new Date(startTimestamp * 1000),
             hour: hour,
@@ -1802,10 +1941,12 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
             colPoolDataBlockNumber: validBlocks.colPoolDataBlock ?? undefined,
             pricesAndRatesBlockNumber: validBlocks.pricesAndRatesBlock ?? undefined,
           });
+        } else {
+          console.log(`  No valid blocks found for trove manager pk=${troveManagerPk}, skipping`);
         }
       } catch (error) {
         const errString = `Failed to process trove manager ${troveManagerPk} on chain ${chain}: ${error}`;
-        console.error(errString);
+        console.error(`  ERROR: ${errString}`);
         logger.error({
           error: errString,
           keyword: "missingValues",
@@ -1816,15 +1957,23 @@ export async function fillTimeSamplePoints(targetTimestamp: number, hourly: bool
       }
     }
 
-    console.log(`Inserting ${samplePoints.length} sample points into database...`);
+    console.log(`\n===== SAMPLE POINTS SUMMARY =====`);
+    console.log(`Total sample points collected: ${samplePoints.length}`);
+    console.log(`Protocol sample points: ${samplePoints.filter((p) => p.protocolPk).length}`);
+    console.log(`Trove manager sample points: ${samplePoints.filter((p) => p.troveManagerPk).length}`);
+
     if (samplePoints.length > 0) {
+      console.log(`Inserting ${samplePoints.length} sample points into database...`);
       await insertSamplePointEntries(samplePoints, { onConflict: "update" });
-      console.log(`Successfully inserted sample points`);
+      console.log(`Successfully inserted all sample points into database`);
+    } else {
+      console.log(`No sample points to insert, skipping database operation`);
     }
 
-    console.log(`Completed fillTimeSamplePoints successfully`);
+    console.log(`========== COMPLETED FILL TIME SAMPLE POINTS SUCCESSFULLY ==========`);
   } catch (error) {
     const errString = `Failed to fill time sample points: ${error}`;
+    console.error(`========== FILL TIME SAMPLE POINTS FAILED ==========`);
     console.error(errString);
     logger.error({
       error: errString,
