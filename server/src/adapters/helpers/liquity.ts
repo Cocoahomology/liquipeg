@@ -13,6 +13,7 @@ const abi = {
   getTroveFromTroveIdsArray: "function getTroveFromTroveIdsArray(uint256 _index) view returns (uint256)",
   getLatestTroveData:
     "function getLatestTroveData(uint256 _troveId) view returns (uint256 entireDebt, uint256 entireColl, uint256 redistBoldDebtGain, uint256 redistCollGain, uint256 accruedInterest, uint256 recordedDebt, uint256 annualInterestRate, uint256 weightedRecordedDebt, uint256 accruedBatchManagementFee, uint256 lastInterestRateAdjTime)",
+  getTroveAnnualInterestRate: "function getTroveAnnualInterestRate(uint256 _troveId) view returns (uint256)",
 };
 
 export function getTrovesByColRegistry(colRegistryAddress: string) {
@@ -55,6 +56,12 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             return { target: troveManagersList[index], params: troveId };
           }),
         })) as { [prop: string]: number }[];
+        const troveAnnualInterestRates = (await api.multiCall({
+          abi: abi.getTroveAnnualInterestRate,
+          calls: troveIds.map((troveId) => {
+            return { target: troveManagersList[index], params: troveId };
+          }),
+        })) as { [prop: string]: number }[];
         const formattedTroveData = troveData.map((data, index) => {
           const {
             debt,
@@ -64,7 +71,6 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             arrayIndex,
             lastDebtUpdateTime,
             lastInterestRateAdjTime,
-            annualInterestRate,
             interestBatchManager,
             batchDebtShares,
           } = data;
@@ -79,7 +85,7 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             arrayIndex: Number(arrayIndex),
             lastDebtUpdateTime: String(lastDebtUpdateTime),
             lastInterestRateAdjTime: String(lastInterestRateAdjTime),
-            annualInterestRate: String(annualInterestRate),
+            annualInterestRate: String(troveAnnualInterestRates[index]),
             accruedInterest: String(accruedInterest),
             interestBatchManager: String(interestBatchManager),
             batchDebtShares: String(batchDebtShares),
