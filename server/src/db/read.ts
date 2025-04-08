@@ -18,6 +18,7 @@ import {
 } from "./schema";
 import db from "./db";
 import { withDbError } from "../utils/dbWrapper";
+import { maxBlocksToQueryByChain } from "../utils/constants";
 
 async function getProtocol(protocolId: number, chain: string) {
   return withDbError(
@@ -138,12 +139,17 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
               // Get the highest block number
               const maxBlock = Math.max(...entries.map((e) => e.block_number));
 
+              const blockThreshold = (maxBlocksToQueryByChain[chain] || 400) / 8;
+
+              // Filter out entries that are too far from the maximum block
+              const filteredEntries = entries.filter((entry) => maxBlock - entry.block_number <= blockThreshold);
+
               // Get timestamp for the max block number
               const blockTimestamp = await db.query.blockTimestamps.findFirst({
                 where: and(eq(blockTimestamps.blockNumber, maxBlock), eq(blockTimestamps.chain, chain)),
               });
 
-              const troveIds = entries.map((entry) => entry.trove_id);
+              const troveIds = filteredEntries.map((entry) => entry.trove_id);
               const latestOwners: Record<string, string> = {};
 
               const ownersData = (
@@ -166,7 +172,7 @@ export async function getLatestTroveDataEntries(protocolId: number, chain: strin
                 latestOwners[owner.trove_id] = owner.owner_address;
               });
 
-              const troveDataEntries = entries.map(
+              const troveDataEntries = filteredEntries.map(
                 ({
                   block_number,
                   pk,
