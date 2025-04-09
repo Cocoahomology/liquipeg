@@ -22,13 +22,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type {
-  Protocol,
-  ProtocolTransaction,
-  YieldTransaction,
-  Trove,
-  TroveTransaction,
-} from "@/lib/dummy-data";
+
+// Define basic types to replace the dummy-data imports
+type Transaction = {
+  id: string;
+  date: string;
+  amount: number;
+  type: string;
+  status: string;
+  reference: string;
+  description: string;
+};
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -138,145 +142,11 @@ const ProtocolSubTable = ({
   transactions,
   onSelectTransaction,
 }: {
-  transactions: ProtocolTransaction[];
-  onSelectTransaction: (transaction: ProtocolTransaction) => void;
+  transactions: Transaction[];
+  onSelectTransaction: (transaction: Transaction) => void;
 }) => {
   // Define columns for the subtable
-  const columns: ColumnDef<ProtocolTransaction>[] = [
-    {
-      accessorKey: "date",
-      header: "Date",
-      cell: ({ row }) => {
-        return <div>{row.getValue("date")}</div>;
-      },
-    },
-    {
-      accessorKey: "amount",
-      header: "Amount",
-      cell: ({ row }) => {
-        const amount = Number.parseFloat(row.getValue("amount"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(amount);
-        return <div className="text-right font-medium">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ row }) => <TransactionTypeBadge type={row.getValue("type")} />,
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
-    },
-    {
-      accessorKey: "reference",
-      header: "Reference",
-      cell: ({ row }) => (
-        <div className="font-mono text-xs">{row.getValue("reference")}</div>
-      ),
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      cell: ({ row }) => (
-        <div
-          className="truncate max-w-[150px]"
-          title={row.getValue("description")}
-        >
-          {row.getValue("description")}
-        </div>
-      ),
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectTransaction(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  ];
-
-  const table = useReactTable({
-    data: transactions,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  return (
-    <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow
-              key={headerGroup.id}
-              className="bg-slate-100 dark:bg-slate-800"
-            >
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-xs">
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="text-sm border-b border-slate-200 dark:border-slate-700"
-                data-id={row.id}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                No transactions found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  );
-};
-
-// Subtable component for yields (formerly stablecoins)
-const YieldSubTable = ({
-  transactions,
-  onSelectTransaction,
-}: {
-  transactions: YieldTransaction[];
-  onSelectTransaction: (transaction: YieldTransaction) => void;
-}) => {
-  // Define columns for the subtable
-  const columns: ColumnDef<YieldTransaction>[] = [
+  const columns: ColumnDef<Transaction>[] = [
     {
       accessorKey: "date",
       header: "Date",
@@ -406,11 +276,11 @@ const TroveSubTable = ({
   transactions,
   onSelectTransaction,
 }: {
-  transactions: TroveTransaction[];
-  onSelectTransaction: (transaction: TroveTransaction) => void;
+  transactions: Transaction[];
+  onSelectTransaction: (transaction: Transaction) => void;
 }) => {
   // Define columns for the subtable
-  const columns: ColumnDef<TroveTransaction>[] = [
+  const columns: ColumnDef<Transaction>[] = [
     {
       accessorKey: "date",
       header: "Date",
@@ -535,22 +405,307 @@ const TroveSubTable = ({
   );
 };
 
+// Subtable component for protocols' trove managers
+const ProtocolTroveManagersTable = ({
+  troveManagers,
+  onSelectItem,
+  changePeriod = "none", // Add changePeriod prop with default value
+}: {
+  troveManagers: any[];
+  onSelectItem: (troveManager: any) => void;
+  changePeriod?: string;
+}) => {
+  // Helper function to format percentage change
+  const formatPercentageChange = (value: number | null) => {
+    if (value === null) return "";
+    return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
+  };
+
+  // Helper function to get cell color based on percentage change
+  const getChangeColor = (value: number | null) => {
+    if (value === null) return "";
+    return value >= 0
+      ? "text-green-600 dark:text-green-400"
+      : "text-red-600 dark:text-red-400";
+  };
+
+  // Define columns for the subtable
+  const columns: ColumnDef<any>[] = [
+    {
+      accessorKey: "collateralSymbol",
+      header: () => <div className="text-center">Coll</div>,
+      cell: ({ row }) => {
+        return (
+          <div className="font-medium text-center">
+            {row.getValue("collateralSymbol")}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "tvl",
+      header: "TVL",
+      cell: ({ row }) => {
+        const tvl = Number.parseFloat(row.getValue("tvl"));
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 2,
+        }).format(tvl);
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.tvlChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.tvlChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right font-medium">
+            {formatted}
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "collateralRatio",
+      header: "CR",
+      cell: ({ row }) => {
+        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.collateralRatioChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.collateralRatioChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right">
+            {ratio.toFixed(1)}%
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "ratioSettings",
+      header: () => <div className="text-center">CCR/MCR/SCR</div>,
+      cell: ({ row }) => {
+        return (
+          <div className="text-center">
+            {row.getValue("ratioSettings") || "N/A"}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "currentColUSDOracle",
+      header: "Oracle Price",
+      cell: ({ row }) => {
+        const price = row.getValue("currentColUSDOracle");
+        if (!price) return <div className="text-right">N/A</div>;
+
+        const priceValue = Number.parseFloat(price as string);
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 2,
+        }).format(priceValue);
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.colUSDOracleChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.colUSDOracleChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right">
+            {formatted}
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "maxLiqPrice",
+      header: "Next Liq",
+      cell: ({ row }) => {
+        const price = row.getValue("maxLiqPrice");
+        if (!price) return <div className="text-right">N/A</div>;
+
+        const priceValue = Number.parseFloat(price as string);
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 2,
+        }).format(priceValue);
+
+        return <div className="text-right">{formatted}</div>;
+      },
+    },
+    {
+      id: "combinedIR",
+      header: "Avg/Min IR",
+      cell: ({ row }) => {
+        const avgIR = row.original.avgIR;
+        const minIR = row.original.minIR;
+
+        if (!avgIR && !minIR) return <div className="text-right">N/A</div>;
+
+        const avgText = avgIR ? `${String(avgIR)}%` : "N/A";
+        const minText = minIR ? `${String(minIR)}%` : "N/A";
+
+        return <div className="text-right">{`${avgText}/${minText}`}</div>;
+      },
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => {
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onSelectItem(row.original)}
+            title="View Analytics"
+            className="p-0 h-8 w-8"
+          >
+            <BarChart2 className="h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+  ];
+
+  const table = useReactTable({
+    data: troveManagers,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return (
+    <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
+      <Table>
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow
+              key={headerGroup.id}
+              className="bg-slate-100 dark:bg-slate-800"
+            >
+              {headerGroup.headers.map((header) => {
+                const isCenteredHeader =
+                  header.column.id === "collateralSymbol" ||
+                  header.column.id === "ratioSettings";
+
+                return (
+                  <TableHead
+                    key={header.id}
+                    className={`text-xs ${
+                      isCenteredHeader ? "" : "text-right"
+                    }`}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                );
+              })}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                className="text-sm border-b border-slate-200 dark:border-slate-700"
+                data-id={row.id}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center">
+                No trove managers found.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+
 interface ExpandableTableProps {
   data: any[];
   onSelectItem: (item: any) => void;
-  dataType: "protocols" | "yields" | "troves";
+  dataType: "protocols" | "troves";
+  changePeriod?: string; // Add the changePeriod prop
 }
 
 export function ExpandableTable({
   data,
   onSelectItem,
   dataType,
+  changePeriod = "none", // Default to "none"
 }: ExpandableTableProps) {
   // State for expanded rows - use an object with stringified keys
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
-  // Define columns for protocols
-  const protocolColumns: ColumnDef<Protocol>[] = [
+  // Helper function to format percentage change
+  const formatPercentageChange = (value: number | null) => {
+    if (value === null) return "";
+    return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
+  };
+
+  // Helper function to get cell color based on percentage change
+  const getChangeColor = (value: number | null) => {
+    if (value === null) return "";
+    return value >= 0
+      ? "text-green-600 dark:text-green-400"
+      : "text-red-600 dark:text-red-400";
+  };
+
+  // We need to define protocol and trove columns first before they are referenced
+  const protocolColumns: ColumnDef<any>[] = [
     {
       id: "expander",
       header: () => null,
@@ -578,10 +733,6 @@ export function ExpandableTable({
       header: "Protocol",
     },
     {
-      accessorKey: "category",
-      header: "Category",
-    },
-    {
       accessorKey: "chain",
       header: "Chain",
     },
@@ -590,58 +741,52 @@ export function ExpandableTable({
       header: "TVL",
       cell: ({ row }) => {
         const tvl = Number.parseFloat(row.getValue("tvl"));
-        // Use a more standardized formatting approach
         const formatted = new Intl.NumberFormat("en-US", {
           style: "currency",
           currency: "USD",
           notation: "compact",
-          maximumFractionDigits: 0, // Change from 1 to 0 to avoid .0 suffix
+          maximumFractionDigits: 2,
         }).format(tvl);
+
         return <div className="text-right font-medium">{formatted}</div>;
       },
     },
     {
-      accessorKey: "users",
-      header: "Users",
+      accessorKey: "collateralRatio",
+      header: "CR",
       cell: ({ row }) => {
-        const users = Number.parseInt(row.getValue("users"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          notation: "compact",
-          maximumFractionDigits: 1,
-        }).format(users);
-        return <div className="text-right">{formatted}</div>;
+        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+        return <div className="text-right">{ratio.toFixed(1)}%</div>;
       },
     },
     {
-      accessorKey: "dailyVolume",
-      header: "Daily Volume",
+      accessorKey: "stableDebt",
+      header: "Stable Debt",
       cell: ({ row }) => {
-        const volume = Number.parseFloat(row.getValue("dailyVolume"));
-        // Standardize formatting to avoid hydration mismatch
+        const debt = Number.parseFloat(row.getValue("stableDebt"));
         const formatted = new Intl.NumberFormat("en-US", {
           style: "currency",
           currency: "USD",
           notation: "compact",
-          maximumFractionDigits: 0, // Change from 1 to 0 to avoid .0 suffix
-        }).format(volume);
+          maximumFractionDigits: 2,
+        }).format(debt);
+
         return <div className="text-right font-medium">{formatted}</div>;
       },
     },
     {
-      accessorKey: "weeklyChange",
-      header: "Weekly Change",
+      accessorKey: "spTvl",
+      header: "SP TVL",
       cell: ({ row }) => {
-        const change = Number.parseFloat(row.getValue("weeklyChange"));
-        const formatted = `${change > 0 ? "+" : ""}${change.toFixed(2)}%`;
-        return (
-          <div
-            className={`text-right ${
-              change >= 0 ? "text-green-600" : "text-red-600"
-            }`}
-          >
-            {formatted}
-          </div>
-        );
+        const spTvl = Number.parseFloat(row.getValue("spTvl"));
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          notation: "compact",
+          maximumFractionDigits: 2,
+        }).format(spTvl);
+
+        return <div className="text-right">{formatted}</div>;
       },
     },
     {
@@ -663,121 +808,7 @@ export function ExpandableTable({
     },
   ];
 
-  // Define columns for yields
-  const yieldColumns: ColumnDef<YieldTransaction>[] = [
-    {
-      id: "expander",
-      header: () => null,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              row.toggleExpanded();
-            }}
-            className="p-0 h-8 w-8"
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </Button>
-        );
-      },
-    },
-    {
-      accessorKey: "name",
-      header: "Name",
-    },
-    {
-      accessorKey: "symbol",
-      header: "Symbol",
-      cell: ({ row }) => (
-        <div className="font-mono">{row.getValue("symbol")}</div>
-      ),
-    },
-    {
-      accessorKey: "price",
-      header: "Price",
-      cell: ({ row }) => {
-        const price = Number.parseFloat(row.getValue("price"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          minimumFractionDigits: 4,
-          maximumFractionDigits: 4,
-        }).format(price);
-        return <div className="text-right font-medium">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "marketCap",
-      header: "Market Cap",
-      cell: ({ row }) => {
-        const marketCap = Number.parseFloat(row.getValue("marketCap"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 0, // Change from 1 to 0
-        }).format(marketCap);
-        return <div className="text-right">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "volume24h",
-      header: "24h Volume",
-      cell: ({ row }) => {
-        const volume = Number.parseFloat(row.getValue("volume24h"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 0, // Change from 1 to 0
-        }).format(volume);
-        return <div className="text-right">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "change24h",
-      header: "24h Change",
-      cell: ({ row }) => {
-        const change = Number.parseFloat(row.getValue("change24h"));
-        const formatted = `${change > 0 ? "+" : ""}${change.toFixed(2)}%`;
-        return (
-          <div
-            className={`text-right ${
-              change >= 0 ? "text-green-600" : "text-red-600"
-            }`}
-          >
-            {formatted}
-          </div>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectItem(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  ];
-
-  // Define columns for troves
-  const troveColumns: ColumnDef<Trove>[] = [
+  const troveColumns: ColumnDef<any>[] = [
     {
       id: "expander",
       header: () => null,
@@ -836,6 +867,7 @@ export function ExpandableTable({
         const formatted = new Intl.NumberFormat("en-US", {
           style: "currency",
           currency: "USD",
+          maximumFractionDigits: 2,
         }).format(debt);
         return <div className="text-right font-medium">{formatted}</div>;
       },
@@ -872,13 +904,209 @@ export function ExpandableTable({
     },
   ];
 
-  // Select columns based on data type
-  const columns =
-    dataType === "protocols"
-      ? protocolColumns
-      : dataType === "yields"
-      ? yieldColumns
-      : troveColumns;
+  // Define custom protocol columns for real data
+  const customProtocolColumns: ColumnDef<any>[] = [
+    {
+      id: "expander",
+      header: () => null,
+      cell: ({ row }) => {
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              row.toggleExpanded();
+            }}
+            className="p-0 h-8 w-8"
+          >
+            {row.getIsExpanded() ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </Button>
+        );
+      },
+    },
+    {
+      accessorKey: "name",
+      header: "Protocol",
+    },
+    {
+      accessorKey: "chain",
+      header: "Chain",
+    },
+    {
+      accessorKey: "tvl",
+      header: "TVL",
+      cell: ({ row }) => {
+        const tvl = Number.parseFloat(row.getValue("tvl"));
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          notation: "compact",
+          maximumFractionDigits: 2,
+        }).format(tvl);
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.tvlChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.tvlChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right font-medium">
+            {formatted}
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "collateralRatio",
+      header: "CR",
+      cell: ({ row }) => {
+        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.collateralRatioChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.collateralRatioChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right">
+            {ratio.toFixed(1)}%
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "stableDebt",
+      header: "Stable Debt",
+      cell: ({ row }) => {
+        const debt = Number.parseFloat(row.getValue("stableDebt"));
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          notation: "compact",
+          maximumFractionDigits: 2,
+        }).format(debt);
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.stableDebtChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.stableDebtChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right font-medium">
+            {formatted}
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "spTvl",
+      header: "SP TVL",
+      cell: ({ row }) => {
+        const spTvl = Number.parseFloat(row.getValue("spTvl"));
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          notation: "compact",
+          maximumFractionDigits: 2,
+        }).format(spTvl);
+
+        // Get the appropriate change value based on changePeriod
+        let changeValue = null;
+        let changeClassName = "";
+
+        if (changePeriod === "1d") {
+          changeValue = row.original.spTvlChange1d;
+          changeClassName = getChangeColor(changeValue);
+        } else if (changePeriod === "7d") {
+          changeValue = row.original.spTvlChange7d;
+          changeClassName = getChangeColor(changeValue);
+        }
+
+        return (
+          <div className="text-right">
+            {formatted}
+            {changePeriod !== "none" && changeValue !== null && (
+              <span className={`ml-1 text-xs ${changeClassName}`}>
+                {formatPercentageChange(changeValue)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => {
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onSelectItem(row.original)}
+            title="View Analytics"
+            className="p-0 h-8 w-8"
+          >
+            <BarChart2 className="h-4 w-4" />
+          </Button>
+        );
+      },
+    },
+  ];
+
+  // Select columns based on data type and data format
+  let columns;
+  if (
+    dataType === "protocols" &&
+    data.length > 0 &&
+    "troveManagers" in data[0]
+  ) {
+    // Use custom columns for the new protocol data format
+    columns = customProtocolColumns;
+  } else if (dataType === "protocols") {
+    columns = protocolColumns;
+  } else {
+    columns = troveColumns;
+  }
 
   const table = useReactTable({
     data,
@@ -898,16 +1126,24 @@ export function ExpandableTable({
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                </TableHead>
-              ))}
+              {headerGroup.headers.map((header) => {
+                const isNameOrChain =
+                  header.column.id === "name" || header.column.id === "chain";
+
+                return (
+                  <TableHead
+                    key={header.id}
+                    className={isNameOrChain ? "" : "text-right"}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                );
+              })}
             </TableRow>
           ))}
         </TableHeader>
@@ -938,35 +1174,32 @@ export function ExpandableTable({
                         <div className="pr-4">
                           <h3 className="text-sm font-medium mb-2">
                             {dataType === "protocols" &&
+                              "troveManagers" in row.original &&
+                              `${row.original.name} Troves`}
+                            {dataType === "protocols" &&
+                              !("troveManagers" in row.original) &&
                               `Transaction History for ${row.original.name}`}
-                            {dataType === "yields" &&
-                              `Transaction History for ${row.original.name} (${row.original.symbol})`}
                             {dataType === "troves" &&
                               `Transaction History for Trove ${row.original.id}`}
                           </h3>
-                          {dataType === "protocols" && (
-                            <ProtocolSubTable
-                              transactions={row.original.transactions || []}
-                              onSelectTransaction={(transaction) =>
-                                onSelectItem(transaction)
-                              }
-                            />
-                          )}
-                          {dataType === "yields" && (
-                            <YieldSubTable
-                              transactions={row.original.transactions || []}
-                              onSelectTransaction={(transaction) =>
-                                onSelectItem(transaction)
-                              }
-                            />
-                          )}
+                          {dataType === "protocols" &&
+                            "troveManagers" in row.original && (
+                              <ProtocolTroveManagersTable
+                                troveManagers={row.original.troveManagers || []}
+                                onSelectItem={onSelectItem}
+                                changePeriod={changePeriod} // Pass changePeriod prop to the ProtocolTroveManagersTable
+                              />
+                            )}
+                          {dataType === "protocols" &&
+                            !("troveManagers" in row.original) && (
+                              <div className="text-center py-8 text-muted-foreground">
+                                No transaction data available.
+                              </div>
+                            )}
                           {dataType === "troves" && (
-                            <TroveSubTable
-                              transactions={row.original.transactions || []}
-                              onSelectTransaction={(transaction) =>
-                                onSelectItem(transaction)
-                              }
-                            />
+                            <div className="text-center py-8 text-muted-foreground">
+                              No transaction data available.
+                            </div>
                           )}
                         </div>
                       </ScrollArea>

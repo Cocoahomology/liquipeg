@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
-import { generateMonthlyData } from "@/lib/dummy-data";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Define the Chart type
@@ -26,6 +25,7 @@ interface DashboardLayoutProps {
   customChartPanel?: ReactNode;
   disableChartControls?: boolean;
   customTitle?: string;
+  changePeriod?: string;
 }
 
 export function DashboardLayout({
@@ -33,21 +33,18 @@ export function DashboardLayout({
   customChartPanel,
   disableChartControls = false,
   customTitle,
+  changePeriod = "none",
 }: DashboardLayoutProps) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [charts, setCharts] = useState<ChartConfig[]>([]);
-  const [dataType, setDataType] = useState<"protocols" | "yields" | "troves">(
-    "protocols"
-  );
+  const [dataType, setDataType] = useState<"protocols" | "troves">("protocols");
 
   // Determine data type based on the first item's properties
   useEffect(() => {
     if (data.length > 0) {
-      if ("tvl" in data[0]) {
+      if ("tvl" in data[0] && "troveManagers" in data[0]) {
         setDataType("protocols");
-      } else if ("symbol" in data[0]) {
-        setDataType("yields");
       } else if ("collateralRatio" in data[0]) {
         setDataType("troves");
       }
@@ -97,12 +94,43 @@ export function DashboardLayout({
   // Get transactions data based on selected item or all
   const getTransactionsData = () => {
     return selectedItem
-      ? selectedItem.transactions
-      : data.flatMap((item) => item.transactions);
+      ? selectedItem.transactions || []
+      : data.flatMap((item) => item.transactions || []);
   };
 
   // Get monthly data for charts
   const monthlyData = generateMonthlyData(dataType);
+
+  // Simple function to generate mock monthly data
+  function generateMonthlyData(dataType: "protocols" | "troves") {
+    const months = 12;
+    const result = [];
+    const currentDate = new Date();
+
+    for (let i = 0; i < months; i++) {
+      const date = new Date(currentDate);
+      date.setMonth(currentDate.getMonth() - (months - 1 - i));
+
+      const data: any = {
+        date: date.toISOString().slice(0, 7), // YYYY-MM format
+      };
+
+      if (dataType === "protocols") {
+        data.deposits = Math.floor(Math.random() * 5000000) + 1000000;
+        data.withdrawals = Math.floor(Math.random() * 3000000) + 500000;
+        data.transfers = Math.floor(Math.random() * 2000000) + 300000;
+      } else if (dataType === "troves") {
+        data.deposits = Math.floor(Math.random() * 2000000) + 500000;
+        data.withdrawals = Math.floor(Math.random() * 1500000) + 300000;
+        data.borrows = Math.floor(Math.random() * 3000000) + 1000000;
+        data.repayments = Math.floor(Math.random() * 2500000) + 800000;
+      }
+
+      result.push(data);
+    }
+
+    return result;
+  }
 
   // Add a new chart
   const addChart = () => {
@@ -189,6 +217,7 @@ export function DashboardLayout({
                         data={data}
                         onSelectItem={setSelectedItem}
                         dataType={dataType}
+                        changePeriod={changePeriod} // Pass the prop to ExpandableTable
                       />
                     </ScrollArea>
                   </CardContent>
@@ -231,6 +260,7 @@ export function DashboardLayout({
                             data={data}
                             onSelectItem={setSelectedItem}
                             dataType={dataType}
+                            changePeriod={changePeriod} // Pass the prop to ExpandableTable
                           />
                         </ScrollArea>
                       </div>
