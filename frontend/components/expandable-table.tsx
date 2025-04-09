@@ -411,19 +411,21 @@ const ProtocolTroveManagersTable = ({
   onSelectItem,
   changePeriod = "none", // Add changePeriod prop with default value
 }: {
-  troveManagers: any[];
+  troveManagers: any;
   onSelectItem: (troveManager: any) => void;
   changePeriod?: string;
 }) => {
   // Helper function to format percentage change
-  const formatPercentageChange = (value: number | null) => {
-    if (value === null) return "";
+  const formatPercentageChange = (value: number | null | undefined) => {
+    if (value == null) return ""; // This checks for both null and undefined
+    if (isNaN(value)) return ""; // Also check for NaN
     return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
   };
 
   // Helper function to get cell color based on percentage change
-  const getChangeColor = (value: number | null) => {
-    if (value === null) return "";
+  const getChangeColor = (value: number | null | undefined) => {
+    if (value == null) return ""; // This checks for both null and undefined
+    if (isNaN(value)) return ""; // Also check for NaN
     return value >= 0
       ? "text-green-600 dark:text-green-400"
       : "text-red-600 dark:text-red-400";
@@ -608,7 +610,8 @@ const ProtocolTroveManagersTable = ({
   ];
 
   const table = useReactTable({
-    data: troveManagers,
+    // Convert troveManagers object to array for table display
+    data: Object.values(troveManagers),
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
@@ -691,14 +694,16 @@ export function ExpandableTable({
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
   // Helper function to format percentage change
-  const formatPercentageChange = (value: number | null) => {
-    if (value === null) return "";
+  const formatPercentageChange = (value: number | null | undefined) => {
+    if (value == null) return ""; // This checks for both null and undefined
+    if (isNaN(value)) return ""; // Also check for NaN
     return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
   };
 
   // Helper function to get cell color based on percentage change
-  const getChangeColor = (value: number | null) => {
-    if (value === null) return "";
+  const getChangeColor = (value: number | null | undefined) => {
+    if (value == null) return ""; // This checks for both null and undefined
+    if (isNaN(value)) return ""; // Also check for NaN
     return value >= 0
       ? "text-green-600 dark:text-green-400"
       : "text-red-600 dark:text-red-400";
@@ -1075,6 +1080,22 @@ export function ExpandableTable({
       },
     },
     {
+      accessorKey: "prev7DayProtocolRedemptionTotal",
+      header: "Redemptions (7d)",
+      cell: ({ row }) => {
+        const redemption = Number.parseFloat(
+          row.getValue("prev7DayProtocolRedemptionTotal") || "0"
+        );
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 2,
+        }).format(redemption);
+
+        return <div className="text-right">{formatted}</div>;
+      },
+    },
+    {
       id: "actions",
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => {
@@ -1185,9 +1206,9 @@ export function ExpandableTable({
                           {dataType === "protocols" &&
                             "troveManagers" in row.original && (
                               <ProtocolTroveManagersTable
-                                troveManagers={row.original.troveManagers || []}
+                                troveManagers={row.original.troveManagers || {}}
                                 onSelectItem={onSelectItem}
-                                changePeriod={changePeriod} // Pass changePeriod prop to the ProtocolTroveManagersTable
+                                changePeriod={changePeriod}
                               />
                             )}
                           {dataType === "protocols" &&

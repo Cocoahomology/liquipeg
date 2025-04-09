@@ -2,11 +2,11 @@ import * as React from "react";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 // import { ICONS_CDN, ICONS_PALETTE_CDN, timeframeOptions } from '~/constants'
-import { colord, extend } from "colord";
-import lchPlugin from "colord/plugins/lch";
+// import { colord, extend } from "colord";
+// import lchPlugin from "colord/plugins/lch";
 import relativeTime from "dayjs/plugin/relativeTime";
 
-extend([lchPlugin]);
+// extend([lchPlugin]);
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
 
@@ -363,6 +363,7 @@ export function getRandomColor() {
   return color;
 }
 
+/*
 export function selectColor(number, color) {
   const hue = number * 137.508; // use golden angle approximation
 
@@ -383,6 +384,7 @@ export const getColorFromNumber = (index, length) => {
     h: 278.2 + (index / (length + 1)) * 360,
   }).toHex();
 };
+*/
 
 export const getDominancePercent = (value, total) => {
   if (!value || !total) {
@@ -462,4 +464,11 @@ export const formatPercentage = (value) => {
     });
 
   return value.toLocaleString(undefined, { maximumFractionDigits: zeroes + 1 });
+};
+
+export const formatProtocolMetricNumber = (value) => {
+  return value.toLocaleString("fullwide", {
+    useGrouping: false,
+    maximumFractionDigits: 20,
+  });
 };
