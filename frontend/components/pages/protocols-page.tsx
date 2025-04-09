@@ -61,14 +61,12 @@ interface ProtocolsPageProps {
 }
 
 export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
-  // Use the TanStack query hook to fetch and cache data
   const {
     data: protocolsData,
     isLoading,
     error,
   } = useGetProtocolsOverviewData();
 
-  // Format data for UI presentation
   const formattedData = formatProtocolDataForUI(protocolsData);
 
   if (isLoading) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   type ColumnDef,
   type ExpandedState,
@@ -10,7 +10,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight, BarChart2 } from "lucide-react";
-
 import {
   Table,
   TableBody,
@@ -23,15 +22,39 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Define basic types to replace the dummy-data imports
-type Transaction = {
-  id: string;
-  date: string;
-  amount: number;
-  type: string;
-  status: string;
-  reference: string;
-  description: string;
+// Define thresholds for different metrics
+const thresholds = {
+  spTvl: [
+    { value: 10, className: "bg-red-100 dark:bg-red-900/40" }, // Less than 10% of stableDebt - brightened for dark mode
+    { value: 40, className: "bg-yellow-100 dark:bg-yellow-800/40" }, // Less than 40% of stableDebt - brightened for dark mode
+  ],
+  // Note: collateralRatio thresholds for TroveManager are defined inline because they depend on each row's CCR value
+
+  // Updated maxLiqPrice thresholds for "less than" logic with currentOracle-to-maxLiqPrice ratio
+  maxLiqPrice: [
+    { value: 105, className: "bg-red-100 dark:bg-red-900/40" }, // Oracle < 1.05 * maxLiqPrice - danger - brightened for dark mode
+    { value: 110, className: "bg-yellow-100 dark:bg-yellow-800/40" }, // Oracle < 1.10 * maxLiqPrice - warning - brightened for dark mode
+  ],
+};
+
+// Add utility function for threshold-based highlighting
+const getThresholdHighlight = (
+  value: number,
+  compareValue: number,
+  thresholds: { value: number; className: string }[]
+): string => {
+  // Sort thresholds from lowest to highest value for proper evaluation
+  const sortedThresholds = [...thresholds].sort((a, b) => a.value - b.value);
+
+  // Calculate the percentage
+  const percentage = (value / compareValue) * 100;
+
+  // Find the first threshold that the value is less than
+  const matchedThreshold = sortedThresholds.find(
+    (threshold) => percentage < threshold.value
+  );
+
+  return matchedThreshold ? matchedThreshold.className : "";
 };
 
 // Status badge component
@@ -83,599 +106,333 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-// Transaction type badge component
-const TransactionTypeBadge = ({ type }: { type: string }) => {
-  const variants: Record<
-    string,
-    { variant: "default" | "outline" | "secondary"; className: string }
-  > = {
-    deposit: { variant: "default", className: "bg-blue-500 hover:bg-blue-500" },
-    withdrawal: {
-      variant: "outline",
-      className:
-        "border-red-300 text-red-500 dark:border-red-800 dark:text-red-400",
-    },
-    transfer: {
-      variant: "secondary",
-      className:
-        "bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/40",
-    },
-    mint: { variant: "default", className: "bg-green-500 hover:bg-green-500" },
-    burn: { variant: "default", className: "" },
-    withdraw: {
-      variant: "outline",
-      className:
-        "border-orange-300 text-orange-500 dark:border-orange-800 dark:text-orange-400",
-    },
-    borrow: {
-      variant: "secondary",
-      className:
-        "bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/40",
-    },
-    repay: {
-      variant: "outline",
-      className:
-        "border-green-300 text-green-500 dark:border-green-800 dark:text-green-400",
-    },
-  };
+// Optimize ProtocolTroveManagersTable with memoization
+const ProtocolTroveManagersTable = React.memo(
+  ({
+    troveManagers,
+    onSelectItem,
+    changePeriod = "none",
+  }: {
+    troveManagers: any;
+    onSelectItem: (troveManager: any) => void;
+    changePeriod?: string;
+  }) => {
+    // Helper function to format percentage change
+    const formatPercentageChange = (value: number | null | undefined) => {
+      if (value == null) return ""; // This checks for both null and undefined
+      if (isNaN(value)) return ""; // Also check for NaN
+      return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
+    };
 
-  const { variant, className } = variants[type] || {
-    variant: "default",
-    className: "",
-  };
+    // Helper function to get cell color based on percentage change
+    const getChangeColor = (value: number | null | undefined) => {
+      if (value == null) return ""; // This checks for both null and undefined
+      if (isNaN(value)) return ""; // Also check for NaN
+      return value >= 0
+        ? "text-green-600 dark:text-green-400"
+        : "text-red-600 dark:text-red-400";
+    };
 
-  return (
-    <Badge variant={variant} className={className}>
-      {type}
-    </Badge>
-  );
-};
-
-// Helper function for consistent date display - simply returns the string as is
-const formatDate = (dateString: string) => {
-  // Just return the date string without any processing
-  return dateString;
-};
-
-// Subtable component for protocols
-const ProtocolSubTable = ({
-  transactions,
-  onSelectTransaction,
-}: {
-  transactions: Transaction[];
-  onSelectTransaction: (transaction: Transaction) => void;
-}) => {
-  // Define columns for the subtable
-  const columns: ColumnDef<Transaction>[] = [
-    {
-      accessorKey: "date",
-      header: "Date",
-      cell: ({ row }) => {
-        return <div>{row.getValue("date")}</div>;
-      },
-    },
-    {
-      accessorKey: "amount",
-      header: "Amount",
-      cell: ({ row }) => {
-        const amount = Number.parseFloat(row.getValue("amount"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(amount);
-        return <div className="text-right font-medium">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ row }) => <TransactionTypeBadge type={row.getValue("type")} />,
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
-    },
-    {
-      accessorKey: "reference",
-      header: "Reference",
-      cell: ({ row }) => (
-        <div className="font-mono text-xs">{row.getValue("reference")}</div>
-      ),
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      cell: ({ row }) => (
-        <div
-          className="truncate max-w-[150px]"
-          title={row.getValue("description")}
-        >
-          {row.getValue("description")}
-        </div>
-      ),
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectTransaction(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  ];
-
-  const table = useReactTable({
-    data: transactions,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  return (
-    <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow
-              key={headerGroup.id}
-              className="bg-slate-100 dark:bg-slate-800"
+    // Define columns for the subtable
+    const columns: ColumnDef<any>[] = [
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onSelectItem(row.original)}
+              title="View Analytics"
+              className="p-0 h-8 w-8"
             >
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-xs">
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
+              <BarChart2 className="h-4 w-4" />
+            </Button>
+          );
+        },
+      },
+      {
+        accessorKey: "collateralSymbol",
+        header: () => <div className="text-center">Coll</div>,
+        cell: ({ row }) => {
+          return (
+            <div className="font-medium text-center">
+              {row.getValue("collateralSymbol")}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "tvl",
+        header: "TVL",
+        cell: ({ row }) => {
+          const tvl = Number.parseFloat(row.getValue("tvl"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(tvl);
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.tvlChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.tvlChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div className="text-right font-medium">
+              {formatted}
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "collateralRatio",
+        header: "CR",
+        cell: ({ row }) => {
+          const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+          const ccr = row.original.ccr; // Get the CCR value from the row data
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.collateralRatioChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.collateralRatioChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          // Define thresholds dynamically based on the row's CCR value
+          const ccrThresholds = ccr
+            ? [
+                { value: ccr, className: "bg-red-100 dark:bg-red-900/40" }, // Below CCR - danger - brightened for dark mode
+                {
+                  value: ccr * 1.1,
+                  className: "bg-yellow-100 dark:bg-yellow-800/40",
+                }, // Below 1.1*CCR - warning - brightened for dark mode
+              ]
+            : [];
+
+          // Get threshold-based highlighting class for collateral ratio
+          const highlightClass = ccr
+            ? getThresholdHighlight(ratio, 100, ccrThresholds)
+            : "";
+
+          // Use whitespace-nowrap to ensure the value and percentage change stay on the same line
+          return (
+            <div
+              className={`text-right ${highlightClass} px-2 py-1 rounded-md whitespace-nowrap`}
+            >
+              <span>{ratio.toFixed(1)}%</span>
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "ratioSettings",
+        header: () => <div className="text-center">CCR/MCR/SCR</div>,
+        cell: ({ row }) => {
+          return (
+            <div className="text-center">
+              {row.getValue("ratioSettings") || "N/A"}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "currentColUSDOracle",
+        header: "Oracle Price",
+        cell: ({ row }) => {
+          const price = row.getValue("currentColUSDOracle");
+          if (!price) return <div className="text-right">N/A</div>;
+
+          const priceValue = Number.parseFloat(price as string);
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(priceValue);
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.colUSDOracleChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.colUSDOracleChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div className="text-right">
+              {formatted}
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "maxLiqPrice",
+        header: "Next Liq",
+        cell: ({ row }) => {
+          const maxLiqPrice = row.getValue("maxLiqPrice");
+          const currentOraclePrice = row.getValue("currentColUSDOracle");
+
+          if (!maxLiqPrice || !currentOraclePrice)
+            return <div className="text-right">N/A</div>;
+
+          const maxLiqPriceValue = Number.parseFloat(maxLiqPrice as string);
+          const oraclePriceValue = Number.parseFloat(
+            currentOraclePrice as string
+          );
+
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(maxLiqPriceValue);
+
+          // Calculate the ratio of oracle price to maxLiqPrice multiplied by 100
+          const ratio = (oraclePriceValue / maxLiqPriceValue) * 100;
+
+          // Use getThresholdHighlight to determine the highlight class
+          const highlightClass = getThresholdHighlight(
+            ratio,
+            100, // Base percentage for comparison
+            thresholds.maxLiqPrice
+          );
+
+          return (
+            <div
+              className={`text-right ${highlightClass} px-2 py-1 rounded-md`}
+            >
+              {formatted}
+            </div>
+          );
+        },
+      },
+      {
+        id: "combinedIR",
+        header: "Avg/Min IR",
+        cell: ({ row }) => {
+          const avgIR = row.original.avgIR;
+          const minIR = row.original.minIR;
+
+          if (!avgIR && !minIR) return <div className="text-right">N/A</div>;
+
+          const avgText = avgIR ? `${String(avgIR)}%` : "N/A";
+          const minText = minIR ? `${String(minIR)}%` : "N/A";
+
+          return <div className="text-right">{`${avgText}/${minText}`}</div>;
+        },
+      },
+    ];
+
+    // Use useMemo to prevent unnecessary recalculations
+    const tableData = useMemo(
+      () => Object.values(troveManagers),
+      [troveManagers]
+    );
+
+    const table = useReactTable<any>({
+      data: tableData,
+      columns: columns as ColumnDef<unknown, any>[],
+      getCoreRowModel: getCoreRowModel(),
+    });
+
+    return (
+      <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow
+                key={headerGroup.id}
+                className="bg-slate-100 dark:bg-slate-800"
+              >
+                {headerGroup.headers.map((header) => {
+                  const isCenteredHeader =
+                    header.column.id === "collateralSymbol" ||
+                    header.column.id === "ratioSettings";
+
+                  return (
+                    <TableHead
+                      key={header.id}
+                      className={`text-xs ${
+                        isCenteredHeader ? "" : "text-right"
+                      }`}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className="text-sm border-b border-slate-200 dark:border-slate-700"
+                  data-id={row.id}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
                       )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="text-sm border-b border-slate-200 dark:border-slate-700"
-                data-id={row.id}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No trove managers found.
+                </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                No transactions found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  );
-};
-
-// Subtable component for troves
-const TroveSubTable = ({
-  transactions,
-  onSelectTransaction,
-}: {
-  transactions: Transaction[];
-  onSelectTransaction: (transaction: Transaction) => void;
-}) => {
-  // Define columns for the subtable
-  const columns: ColumnDef<Transaction>[] = [
-    {
-      accessorKey: "date",
-      header: "Date",
-      cell: ({ row }) => {
-        return <div>{row.getValue("date")}</div>;
-      },
-    },
-    {
-      accessorKey: "amount",
-      header: "Amount",
-      cell: ({ row }) => {
-        const amount = Number.parseFloat(row.getValue("amount"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(amount);
-        return <div className="text-right font-medium">{formatted}</div>;
-      },
-    },
-    {
-      accessorKey: "type",
-      header: "Type",
-      cell: ({ row }) => <TransactionTypeBadge type={row.getValue("type")} />,
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
-    },
-    {
-      accessorKey: "reference",
-      header: "Reference",
-      cell: ({ row }) => (
-        <div className="font-mono text-xs">{row.getValue("reference")}</div>
-      ),
-    },
-    {
-      accessorKey: "description",
-      header: "Description",
-      cell: ({ row }) => (
-        <div
-          className="truncate max-w-[150px]"
-          title={row.getValue("description")}
-        >
-          {row.getValue("description")}
-        </div>
-      ),
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectTransaction(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  ];
-
-  const table = useReactTable({
-    data: transactions,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  return (
-    <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow
-              key={headerGroup.id}
-              className="bg-slate-100 dark:bg-slate-800"
-            >
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-xs">
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="text-sm border-b border-slate-200 dark:border-slate-700"
-                data-id={row.id}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                No transactions found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  );
-};
-
-// Subtable component for protocols' trove managers
-const ProtocolTroveManagersTable = ({
-  troveManagers,
-  onSelectItem,
-  changePeriod = "none", // Add changePeriod prop with default value
-}: {
-  troveManagers: any;
-  onSelectItem: (troveManager: any) => void;
-  changePeriod?: string;
-}) => {
-  // Helper function to format percentage change
-  const formatPercentageChange = (value: number | null | undefined) => {
-    if (value == null) return ""; // This checks for both null and undefined
-    if (isNaN(value)) return ""; // Also check for NaN
-    return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
-  };
-
-  // Helper function to get cell color based on percentage change
-  const getChangeColor = (value: number | null | undefined) => {
-    if (value == null) return ""; // This checks for both null and undefined
-    if (isNaN(value)) return ""; // Also check for NaN
-    return value >= 0
-      ? "text-green-600 dark:text-green-400"
-      : "text-red-600 dark:text-red-400";
-  };
-
-  // Define columns for the subtable
-  const columns: ColumnDef<any>[] = [
-    {
-      accessorKey: "collateralSymbol",
-      header: () => <div className="text-center">Coll</div>,
-      cell: ({ row }) => {
-        return (
-          <div className="font-medium text-center">
-            {row.getValue("collateralSymbol")}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "tvl",
-      header: "TVL",
-      cell: ({ row }) => {
-        const tvl = Number.parseFloat(row.getValue("tvl"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(tvl);
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.tvlChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.tvlChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right font-medium">
-            {formatted}
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
             )}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "collateralRatio",
-      header: "CR",
-      cell: ({ row }) => {
-        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.collateralRatioChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.collateralRatioChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right">
-            {ratio.toFixed(1)}%
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "ratioSettings",
-      header: () => <div className="text-center">CCR/MCR/SCR</div>,
-      cell: ({ row }) => {
-        return (
-          <div className="text-center">
-            {row.getValue("ratioSettings") || "N/A"}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "currentColUSDOracle",
-      header: "Oracle Price",
-      cell: ({ row }) => {
-        const price = row.getValue("currentColUSDOracle");
-        if (!price) return <div className="text-right">N/A</div>;
-
-        const priceValue = Number.parseFloat(price as string);
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(priceValue);
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.colUSDOracleChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.colUSDOracleChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right">
-            {formatted}
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "maxLiqPrice",
-      header: "Next Liq",
-      cell: ({ row }) => {
-        const price = row.getValue("maxLiqPrice");
-        if (!price) return <div className="text-right">N/A</div>;
-
-        const priceValue = Number.parseFloat(price as string);
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(priceValue);
-
-        return <div className="text-right">{formatted}</div>;
-      },
-    },
-    {
-      id: "combinedIR",
-      header: "Avg/Min IR",
-      cell: ({ row }) => {
-        const avgIR = row.original.avgIR;
-        const minIR = row.original.minIR;
-
-        if (!avgIR && !minIR) return <div className="text-right">N/A</div>;
-
-        const avgText = avgIR ? `${String(avgIR)}%` : "N/A";
-        const minText = minIR ? `${String(minIR)}%` : "N/A";
-
-        return <div className="text-right">{`${avgText}/${minText}`}</div>;
-      },
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectItem(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  ];
-
-  const table = useReactTable({
-    // Convert troveManagers object to array for table display
-    data: Object.values(troveManagers),
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  return (
-    <div className="rounded-md border bg-slate-50 dark:bg-slate-900 p-2 my-2">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow
-              key={headerGroup.id}
-              className="bg-slate-100 dark:bg-slate-800"
-            >
-              {headerGroup.headers.map((header) => {
-                const isCenteredHeader =
-                  header.column.id === "collateralSymbol" ||
-                  header.column.id === "ratioSettings";
-
-                return (
-                  <TableHead
-                    key={header.id}
-                    className={`text-xs ${
-                      isCenteredHeader ? "" : "text-right"
-                    }`}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="text-sm border-b border-slate-200 dark:border-slate-700"
-                data-id={row.id}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                No trove managers found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  );
-};
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
+);
 
 interface ExpandableTableProps {
   data: any[];
@@ -690,456 +447,506 @@ export function ExpandableTable({
   dataType,
   changePeriod = "none", // Default to "none"
 }: ExpandableTableProps) {
-  // State for expanded rows - use an object with stringified keys
+  // State for expanded rows
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
-  // Helper function to format percentage change
-  const formatPercentageChange = (value: number | null | undefined) => {
-    if (value == null) return ""; // This checks for both null and undefined
-    if (isNaN(value)) return ""; // Also check for NaN
-    return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
-  };
+  // Memoize handlers to prevent unnecessary re-renders
+  const handleExpandedChange = useCallback((newExpanded: ExpandedState) => {
+    setExpanded(newExpanded);
+  }, []);
 
-  // Helper function to get cell color based on percentage change
-  const getChangeColor = (value: number | null | undefined) => {
+  const handleSelectItem = useCallback(
+    (item: any) => {
+      onSelectItem(item);
+    },
+    [onSelectItem]
+  );
+
+  // Memoize helper functions
+  const formatPercentageChange = useCallback(
+    (value: number | null | undefined) => {
+      if (value == null) return ""; // This checks for both null and undefined
+      if (isNaN(value)) return ""; // Also check for NaN
+      return value >= 0 ? `(+${value.toFixed(1)}%)` : `(${value.toFixed(1)}%)`;
+    },
+    []
+  );
+
+  const getChangeColor = useCallback((value: number | null | undefined) => {
     if (value == null) return ""; // This checks for both null and undefined
     if (isNaN(value)) return ""; // Also check for NaN
     return value >= 0
       ? "text-green-600 dark:text-green-400"
       : "text-red-600 dark:text-red-400";
-  };
+  }, []);
 
-  // We need to define protocol and trove columns first before they are referenced
-  const protocolColumns: ColumnDef<any>[] = [
-    {
-      id: "expander",
-      header: () => null,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              row.toggleExpanded();
-            }}
-            className="p-0 h-8 w-8"
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </Button>
-        );
+  // Calculate columns based on dataType and data - memoize to prevent unnecessary recalculation
+  const columns = useMemo(() => {
+    const protocolColumns: ColumnDef<any>[] = [
+      {
+        id: "expander",
+        header: () => null,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                row.toggleExpanded();
+              }}
+              className="p-0 h-8 w-8"
+            >
+              {row.getIsExpanded() ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "name",
-      header: "Protocol",
-    },
-    {
-      accessorKey: "chain",
-      header: "Chain",
-    },
-    {
-      accessorKey: "tvl",
-      header: "TVL",
-      cell: ({ row }) => {
-        const tvl = Number.parseFloat(row.getValue("tvl"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(tvl);
-
-        return <div className="text-right font-medium">{formatted}</div>;
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleSelectItem(row.original)}
+              title="View Analytics"
+              className="p-0 h-8 w-8"
+            >
+              <BarChart2 className="h-4 w-4" />
+            </Button>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "collateralRatio",
-      header: "CR",
-      cell: ({ row }) => {
-        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
-        return <div className="text-right">{ratio.toFixed(1)}%</div>;
+      {
+        accessorKey: "name",
+        header: "Protocol",
       },
-    },
-    {
-      accessorKey: "stableDebt",
-      header: "Stable Debt",
-      cell: ({ row }) => {
-        const debt = Number.parseFloat(row.getValue("stableDebt"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(debt);
-
-        return <div className="text-right font-medium">{formatted}</div>;
+      {
+        accessorKey: "chain",
+        header: "Chain",
       },
-    },
-    {
-      accessorKey: "spTvl",
-      header: "SP TVL",
-      cell: ({ row }) => {
-        const spTvl = Number.parseFloat(row.getValue("spTvl"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(spTvl);
+      {
+        accessorKey: "tvl",
+        header: "TVL",
+        cell: ({ row }) => {
+          const tvl = Number.parseFloat(row.getValue("tvl"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(tvl);
 
-        return <div className="text-right">{formatted}</div>;
+          return <div className="text-right font-medium">{formatted}</div>;
+        },
       },
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectItem(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
+      {
+        accessorKey: "stableDebt",
+        header: "Stable Debt",
+        cell: ({ row }) => {
+          const debt = Number.parseFloat(row.getValue("stableDebt"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(debt);
+
+          return <div className="text-right font-medium">{formatted}</div>;
+        },
       },
-    },
-  ];
+      {
+        accessorKey: "spTvl",
+        header: "SP TVL",
+        cell: ({ row }) => {
+          const spTvl = Number.parseFloat(row.getValue("spTvl"));
+          const stableDebt = Number.parseFloat(row.getValue("stableDebt"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(spTvl);
 
-  const troveColumns: ColumnDef<any>[] = [
-    {
-      id: "expander",
-      header: () => null,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              row.toggleExpanded();
-            }}
-            className="p-0 h-8 w-8"
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </Button>
-        );
+          // Get threshold-based highlighting class
+          const highlightClass =
+            stableDebt > 0
+              ? getThresholdHighlight(spTvl, stableDebt, thresholds.spTvl)
+              : "";
+
+          return (
+            <div
+              className={`text-right ${highlightClass} px-2 py-1 rounded-md`}
+            >
+              {formatted}
+            </div>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "owner",
-      header: "Owner",
-      cell: ({ row }) => {
-        const address = row.getValue("owner") as string;
-        return (
-          <div className="font-mono text-xs">{`${address.substring(
-            0,
-            6
-          )}...${address.substring(address.length - 4)}`}</div>
-        );
+      {
+        accessorKey: "collateralRatio",
+        header: "CR",
+        cell: ({ row }) => {
+          const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+          return <div className="text-right">{ratio.toFixed(1)}%</div>;
+        },
       },
-    },
-    {
-      accessorKey: "collateralType",
-      header: "Collateral",
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("collateralType")}</div>
-      ),
-    },
-    {
-      accessorKey: "collateralAmount",
-      header: "Amount",
-      cell: ({ row }) => {
-        const amount = Number.parseFloat(row.getValue("collateralAmount"));
-        return <div className="text-right">{amount.toFixed(2)}</div>;
+    ];
+
+    const troveColumns: ColumnDef<any>[] = [
+      {
+        id: "expander",
+        header: () => null,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                row.toggleExpanded();
+              }}
+              className="p-0 h-8 w-8"
+            >
+              {row.getIsExpanded() ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "debtAmount",
-      header: "Debt",
-      cell: ({ row }) => {
-        const debt = Number.parseFloat(row.getValue("debtAmount"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(debt);
-        return <div className="text-right font-medium">{formatted}</div>;
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleSelectItem(row.original)}
+              title="View Analytics"
+              className="p-0 h-8 w-8"
+            >
+              <BarChart2 className="h-4 w-4" />
+            </Button>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "collateralRatio",
-      header: "Coll. Ratio",
-      cell: ({ row }) => {
-        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
-        return <div className="text-right">{ratio.toFixed(0)}%</div>;
+      {
+        accessorKey: "owner",
+        header: "Owner",
+        cell: ({ row }) => {
+          const address = row.getValue("owner") as string;
+          return (
+            <div className="font-mono text-xs">{`${address.substring(
+              0,
+              6
+            )}...${address.substring(address.length - 4)}`}</div>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectItem(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
+      {
+        accessorKey: "collateralType",
+        header: "Collateral",
+        cell: ({ row }) => (
+          <div className="font-medium">{row.getValue("collateralType")}</div>
+        ),
       },
-    },
-  ];
-
-  // Define custom protocol columns for real data
-  const customProtocolColumns: ColumnDef<any>[] = [
-    {
-      id: "expander",
-      header: () => null,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              row.toggleExpanded();
-            }}
-            className="p-0 h-8 w-8"
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </Button>
-        );
+      {
+        accessorKey: "collateralAmount",
+        header: "Amount",
+        cell: ({ row }) => {
+          const amount = Number.parseFloat(row.getValue("collateralAmount"));
+          return <div className="text-right">{amount.toFixed(2)}</div>;
+        },
       },
-    },
-    {
-      accessorKey: "name",
-      header: "Protocol",
-    },
-    {
-      accessorKey: "chain",
-      header: "Chain",
-    },
-    {
-      accessorKey: "tvl",
-      header: "TVL",
-      cell: ({ row }) => {
-        const tvl = Number.parseFloat(row.getValue("tvl"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(tvl);
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.tvlChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.tvlChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right font-medium">
-            {formatted}
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
+      {
+        accessorKey: "debtAmount",
+        header: "Debt",
+        cell: ({ row }) => {
+          const debt = Number.parseFloat(row.getValue("debtAmount"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(debt);
+          return <div className="text-right font-medium">{formatted}</div>;
+        },
       },
-    },
-    {
-      accessorKey: "collateralRatio",
-      header: "CR",
-      cell: ({ row }) => {
-        const ratio = Number.parseFloat(row.getValue("collateralRatio"));
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.collateralRatioChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.collateralRatioChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right">
-            {ratio.toFixed(1)}%
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
+      {
+        accessorKey: "collateralRatio",
+        header: "Coll. Ratio",
+        cell: ({ row }) => {
+          const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+          return <div className="text-right">{ratio.toFixed(0)}%</div>;
+        },
       },
-    },
-    {
-      accessorKey: "stableDebt",
-      header: "Stable Debt",
-      cell: ({ row }) => {
-        const debt = Number.parseFloat(row.getValue("stableDebt"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(debt);
-
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.stableDebtChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.stableDebtChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right font-medium">
-            {formatted}
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
       },
-    },
-    {
-      accessorKey: "spTvl",
-      header: "SP TVL",
-      cell: ({ row }) => {
-        const spTvl = Number.parseFloat(row.getValue("spTvl"));
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          notation: "compact",
-          maximumFractionDigits: 2,
-        }).format(spTvl);
+    ];
 
-        // Get the appropriate change value based on changePeriod
-        let changeValue = null;
-        let changeClassName = "";
-
-        if (changePeriod === "1d") {
-          changeValue = row.original.spTvlChange1d;
-          changeClassName = getChangeColor(changeValue);
-        } else if (changePeriod === "7d") {
-          changeValue = row.original.spTvlChange7d;
-          changeClassName = getChangeColor(changeValue);
-        }
-
-        return (
-          <div className="text-right">
-            {formatted}
-            {changePeriod !== "none" && changeValue !== null && (
-              <span className={`ml-1 text-xs ${changeClassName}`}>
-                {formatPercentageChange(changeValue)}
-              </span>
-            )}
-          </div>
-        );
+    const customProtocolColumns: ColumnDef<any>[] = [
+      {
+        id: "expander",
+        header: () => null,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                row.toggleExpanded();
+              }}
+              className="p-0 h-8 w-8"
+            >
+              {row.getIsExpanded() ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+          );
+        },
       },
-    },
-    {
-      accessorKey: "prev7DayProtocolRedemptionTotal",
-      header: "Redemptions (7d)",
-      cell: ({ row }) => {
-        const redemption = Number.parseFloat(
-          row.getValue("prev7DayProtocolRedemptionTotal") || "0"
-        );
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-          maximumFractionDigits: 2,
-        }).format(redemption);
-
-        return <div className="text-right">{formatted}</div>;
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => {
+          return (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleSelectItem(row.original)}
+              title="View Analytics"
+              className="p-0 h-8 w-8"
+            >
+              <BarChart2 className="h-4 w-4" />
+            </Button>
+          );
+        },
       },
-    },
-    {
-      id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => {
-        return (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onSelectItem(row.original)}
-            title="View Analytics"
-            className="p-0 h-8 w-8"
-          >
-            <BarChart2 className="h-4 w-4" />
-          </Button>
-        );
+      {
+        accessorKey: "name",
+        header: "Protocol",
       },
-    },
-  ];
+      {
+        accessorKey: "chain",
+        header: "Chain",
+      },
+      {
+        accessorKey: "tvl",
+        header: "TVL",
+        cell: ({ row }) => {
+          const tvl = Number.parseFloat(row.getValue("tvl"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(tvl);
 
-  // Select columns based on data type and data format
-  let columns;
-  if (
-    dataType === "protocols" &&
-    data.length > 0 &&
-    "troveManagers" in data[0]
-  ) {
-    // Use custom columns for the new protocol data format
-    columns = customProtocolColumns;
-  } else if (dataType === "protocols") {
-    columns = protocolColumns;
-  } else {
-    columns = troveColumns;
-  }
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
 
-  const table = useReactTable({
+          if (changePeriod === "1d") {
+            changeValue = row.original.tvlChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.tvlChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div className="text-right font-medium">
+              {formatted}
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "stableDebt",
+        header: "Stable Debt",
+        cell: ({ row }) => {
+          const debt = Number.parseFloat(row.getValue("stableDebt"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(debt);
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.stableDebtChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.stableDebtChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div className="text-right font-medium">
+              {formatted}
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "spTvl",
+        header: "SP TVL",
+        cell: ({ row }) => {
+          const spTvl = Number.parseFloat(row.getValue("spTvl"));
+          const stableDebt = Number.parseFloat(row.getValue("stableDebt"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(spTvl);
+
+          // Get threshold-based highlighting class
+          const highlightClass =
+            stableDebt > 0
+              ? getThresholdHighlight(spTvl, stableDebt, thresholds.spTvl)
+              : "";
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.spTvlChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.spTvlChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div
+              className={`text-right ${highlightClass} px-2 py-1 rounded-md`}
+            >
+              {formatted}
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "collateralRatio",
+        header: "CR",
+        cell: ({ row }) => {
+          const ratio = Number.parseFloat(row.getValue("collateralRatio"));
+
+          // Get the appropriate change value based on changePeriod
+          let changeValue = null;
+          let changeClassName = "";
+
+          if (changePeriod === "1d") {
+            changeValue = row.original.collateralRatioChange1d;
+            changeClassName = getChangeColor(changeValue);
+          } else if (changePeriod === "7d") {
+            changeValue = row.original.collateralRatioChange7d;
+            changeClassName = getChangeColor(changeValue);
+          }
+
+          return (
+            <div className="text-right whitespace-nowrap">
+              <span>{ratio.toFixed(1)}%</span>
+              {changePeriod !== "none" && changeValue !== null && (
+                <span className={`ml-1 text-xs ${changeClassName}`}>
+                  {formatPercentageChange(changeValue)}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "prev7DayProtocolRedemptionTotal",
+        header: "Redemptions (7d)",
+        cell: ({ row }) => {
+          const redemption = Number.parseFloat(
+            row.getValue("prev7DayProtocolRedemptionTotal") || "0"
+          );
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(redemption);
+
+          return <div className="text-right">{formatted}</div>;
+        },
+      },
+    ];
+
+    // Select columns based on data type and data format
+    if (
+      dataType === "protocols" &&
+      data.length > 0 &&
+      "troveManagers" in data[0]
+    ) {
+      // Use custom columns for the new protocol data format
+      return customProtocolColumns;
+    } else if (dataType === "protocols") {
+      return protocolColumns;
+    } else {
+      return troveColumns;
+    }
+  }, [
+    dataType,
     data,
-    columns,
-    state: {
-      expanded,
-    },
-    onExpandedChange: setExpanded,
-    getSubRows: () => undefined, // We're handling expansion manually
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
-  });
+    changePeriod,
+    handleSelectItem,
+    formatPercentageChange,
+    getChangeColor,
+  ]);
+
+  // Instead of using useMemo to call useReactTable, memoize the config
+  const tableConfig = useMemo(
+    () => ({
+      data,
+      columns: columns as ColumnDef<unknown, any>[],
+      state: {
+        expanded,
+      },
+      onExpandedChange: handleExpandedChange,
+      getSubRows: () => undefined,
+      getCoreRowModel: getCoreRowModel(),
+      getExpandedRowModel: getExpandedRowModel(),
+    }),
+    [data, columns, expanded, handleExpandedChange]
+  );
+
+  // Call useReactTable directly at the top level with the memoized config
+  const table = useReactTable(tableConfig);
 
   return (
     <div className="rounded-md border overflow-x-auto">
@@ -1195,23 +1002,27 @@ export function ExpandableTable({
                         <div className="pr-4">
                           <h3 className="text-sm font-medium mb-2">
                             {dataType === "protocols" &&
+                              typeof row.original === "object" &&
+                              row.original !== null &&
                               "troveManagers" in row.original &&
+                              "name" in row.original &&
                               `${row.original.name} Troves`}
-                            {dataType === "protocols" &&
-                              !("troveManagers" in row.original) &&
-                              `Transaction History for ${row.original.name}`}
-                            {dataType === "troves" &&
-                              `Transaction History for Trove ${row.original.id}`}
                           </h3>
+
                           {dataType === "protocols" &&
+                            typeof row.original === "object" &&
+                            row.original !== null &&
                             "troveManagers" in row.original && (
                               <ProtocolTroveManagersTable
                                 troveManagers={row.original.troveManagers || {}}
-                                onSelectItem={onSelectItem}
+                                onSelectItem={handleSelectItem}
                                 changePeriod={changePeriod}
                               />
                             )}
+
                           {dataType === "protocols" &&
+                            typeof row.original === "object" &&
+                            row.original !== null &&
                             !("troveManagers" in row.original) && (
                               <div className="text-center py-8 text-muted-foreground">
                                 No transaction data available.

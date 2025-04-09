@@ -133,6 +133,7 @@ function formatTroveManagerForUI(tm) {
     collateralRatioChange1d: tm.collateralRatioChange1d,
     collateralRatioChange7d: tm.collateralRatioChange7d,
     ratioSettings: `${ccr}/${mcr}/${scr}`,
+    ccr: ccr,
     currentColUSDOracle: tm.currentColUSDOracle || "",
     prevDayColUSDOracle: tm.prevDayColUSDOracle || null,
     prev7DayColUSDOracle: tm.prev7DayColUSDOracle || null,

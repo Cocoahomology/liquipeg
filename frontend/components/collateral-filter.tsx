@@ -42,25 +42,12 @@ export function CollateralFilter({
   );
 
   const toggleCollateral = (collateral: string) => {
-    console.log("Toggle called for:", collateral);
-    console.log("Current selected:", selectedCollaterals);
-
     if (selectedCollaterals.includes(collateral)) {
-      console.log("Removing collateral");
       onSelectionChange(selectedCollaterals.filter((c) => c !== collateral));
     } else {
-      console.log("Adding collateral");
       onSelectionChange([...selectedCollaterals, collateral]);
     }
   };
-
-  // Debug logging for renders
-  React.useEffect(() => {
-    console.log(
-      "CollateralFilter rendered with selected:",
-      selectedCollaterals
-    );
-  }, [selectedCollaterals]);
 
   const clearAll = () => {
     onSelectionChange([]);
@@ -73,24 +60,26 @@ export function CollateralFilter({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-full justify-between", className)}
+          className={cn("w-full justify-between relative", className)}
         >
-          {selectedCollaterals.length > 0
-            ? `${selectedCollaterals.length} collateral${
-                selectedCollaterals.length > 1 ? "s" : ""
-              } selected`
-            : "Select collateral..."}
-          <div className="flex gap-1 ml-2">
+          <span className="truncate">
+            {selectedCollaterals.length > 0
+              ? `${selectedCollaterals.length} collateral${
+                  selectedCollaterals.length > 1 ? "s" : ""
+                } selected`
+              : "Select collateral..."}
+          </span>
+          <div className="flex items-center gap-1 ml-2 shrink-0">
             {selectedCollaterals.length > 0 && (
               <Badge
                 variant="secondary"
-                className="rounded-sm px-1 font-normal"
+                className="rounded-sm px-1 font-normal h-5 flex items-center"
                 onClick={(e) => {
                   e.stopPropagation();
                   clearAll();
                 }}
               >
-                {selectedCollaterals.length}
+                <span className="text-xs">{selectedCollaterals.length}</span>
                 <X className="ml-1 h-3 w-3" />
               </Badge>
             )}
@@ -121,10 +110,7 @@ export function CollateralFilter({
                   variant="ghost"
                   size="sm"
                   className="text-xs h-8"
-                  onClick={() => {
-                    console.log("Clear all clicked");
-                    clearAll();
-                  }}
+                  onClick={clearAll}
                 >
                   Clear all
                 </Button>
@@ -135,16 +121,12 @@ export function CollateralFilter({
                   <div
                     key={collateral}
                     className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer"
-                    onClick={() => {
-                      console.log("Item clicked:", collateral);
-                      toggleCollateral(collateral);
-                    }}
+                    onClick={() => toggleCollateral(collateral)}
                   >
                     <div
                       className="w-4 h-4 border border-primary rounded-sm flex items-center justify-center"
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("Checkbox clicked:", collateral);
                         toggleCollateral(collateral);
                       }}
                     >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -40,7 +40,12 @@ export function DashboardLayout({
   const [charts, setCharts] = useState<ChartConfig[]>([]);
   const [dataType, setDataType] = useState<"protocols" | "troves">("protocols");
 
-  // Determine data type based on the first item's properties
+  // Memoize the select item handler
+  const handleSelectItem = useCallback((item: any) => {
+    setSelectedItem(item);
+  }, []);
+
+  // Determine data type based on the first item's properties - memoize this calculation
   useEffect(() => {
     if (data.length > 0) {
       if ("tvl" in data[0] && "troveManagers" in data[0]) {
@@ -91,15 +96,37 @@ export function DashboardLayout({
     return [50, 50];
   };
 
-  // Get transactions data based on selected item or all
-  const getTransactionsData = () => {
+  // Memoize chart handlers
+  const addChart = useCallback(() => {
+    const newChart: ChartConfig = {
+      id: uuidv4(),
+      type: "bar", // Default chart type
+    };
+    setCharts((prev) => [...prev, newChart]);
+  }, []);
+
+  const updateChartType = useCallback(
+    (id: string, type: "bar" | "line" | "pie") => {
+      setCharts((prev) =>
+        prev.map((chart) => (chart.id === id ? { ...chart, type } : chart))
+      );
+    },
+    []
+  );
+
+  const removeChart = useCallback((id: string) => {
+    setCharts((prev) => prev.filter((chart) => chart.id !== id));
+  }, []);
+
+  // Get transactions data based on selected item or all - memoize this result
+  const transactionsData = useMemo(() => {
     return selectedItem
       ? selectedItem.transactions || []
       : data.flatMap((item) => item.transactions || []);
-  };
+  }, [selectedItem, data]);
 
-  // Get monthly data for charts
-  const monthlyData = generateMonthlyData(dataType);
+  // Get monthly data for charts - memoize to prevent regeneration
+  const monthlyData = useMemo(() => generateMonthlyData(dataType), [dataType]);
 
   // Simple function to generate mock monthly data
   function generateMonthlyData(dataType: "protocols" | "troves") {
@@ -132,26 +159,13 @@ export function DashboardLayout({
     return result;
   }
 
-  // Add a new chart
-  const addChart = () => {
-    const newChart: ChartConfig = {
-      id: uuidv4(),
-      type: "bar", // Default chart type
-    };
-    setCharts([...charts, newChart]);
-  };
-
-  // Update chart type
-  const updateChartType = (id: string, type: "bar" | "line" | "pie") => {
-    setCharts(
-      charts.map((chart) => (chart.id === id ? { ...chart, type } : chart))
-    );
-  };
-
-  // Remove a chart
-  const removeChart = (id: string) => {
-    setCharts(charts.filter((chart) => chart.id !== id));
-  };
+  // Function to determine the title to display
+  const title = useMemo(() => {
+    if (customTitle) return customTitle;
+    if (selectedItem)
+      return `${selectedItem.name || selectedItem.owner}'s Analytics`;
+    return "Analytics";
+  }, [customTitle, selectedItem]);
 
   // Render chart content based on whether a custom panel is provided
   const renderChartContent = () => {
@@ -180,7 +194,7 @@ export function DashboardLayout({
               key={chart.id}
               chartId={chart.id}
               chartType={chart.type}
-              data={getTransactionsData()}
+              data={transactionsData}
               monthlyData={monthlyData}
               dataType={dataType}
               onChangeType={(type) => updateChartType(chart.id, type)}
@@ -190,14 +204,6 @@ export function DashboardLayout({
         )}
       </div>
     );
-  };
-
-  // Function to determine the title to display
-  const getTitle = () => {
-    if (customTitle) return customTitle;
-    if (selectedItem)
-      return `${selectedItem.name || selectedItem.owner}'s Analytics`;
-    return "Analytics";
   };
 
   return (
@@ -215,7 +221,7 @@ export function DashboardLayout({
                     <ScrollArea className="h-[calc(50vh-100px)]">
                       <ExpandableTable
                         data={data}
-                        onSelectItem={setSelectedItem}
+                        onSelectItem={handleSelectItem}
                         dataType={dataType}
                         changePeriod={changePeriod} // Pass the prop to ExpandableTable
                       />
@@ -225,7 +231,7 @@ export function DashboardLayout({
 
                 <Card className="flex-1 min-h-[300px]">
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>{getTitle()}</CardTitle>
+                    <CardTitle>{title}</CardTitle>
                     {!disableChartControls && (
                       <Button variant="outline" size="sm" onClick={addChart}>
                         <PlusCircle className="mr-2 h-4 w-4" />
@@ -258,7 +264,7 @@ export function DashboardLayout({
                         <ScrollArea className="h-[calc(100vh-120px)]">
                           <ExpandableTable
                             data={data}
-                            onSelectItem={setSelectedItem}
+                            onSelectItem={handleSelectItem}
                             dataType={dataType}
                             changePeriod={changePeriod} // Pass the prop to ExpandableTable
                           />
@@ -282,7 +288,7 @@ export function DashboardLayout({
                     <div className="h-full flex flex-col">
                       {/* No more Card - just a plain div */}
                       <div className="sticky top-0 z-10 bg-card border-b flex flex-row items-center justify-between flex-shrink-0 p-4">
-                        <h3 className="text-lg font-semibold">{getTitle()}</h3>
+                        <h3 className="text-lg font-semibold">{title}</h3>
                         {!disableChartControls && (
                           <Button
                             variant="outline"
