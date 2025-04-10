@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { TransactionChart } from "@/components/transaction-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,41 +10,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, BarChart, LineChart, PieChart } from "lucide-react";
+import { X, BarChart, PieChart } from "lucide-react";
+import { TvlDotPlot } from "./tvl-dot-plot";
+import { CrPieChart } from "./cr-pie-chart";
 
 interface ChartContainerProps {
   chartId: string;
-  chartType: "bar" | "line" | "pie";
+  chartType: "tvl" | "cr";
   data: any[];
   monthlyData: any[];
-  dataType: "protocols" | "yields" | "troves";
-  onChangeType: (type: "bar" | "line" | "pie") => void;
+  dataType: "protocols" | "troves";
+  chartData?: any;
+  onChangeType: (type: "tvl" | "cr") => void;
   onRemove: () => void;
+  selectedTroveManagerIndex: number | null;
 }
 
 // Chart type options
 const chartTypes = [
-  { value: "bar", label: "Bar Chart", icon: BarChart },
-  { value: "line", label: "Line Chart", icon: LineChart },
-  { value: "pie", label: "Pie Chart", icon: PieChart },
+  { value: "tvl", label: "TVL Chart", icon: BarChart },
+  { value: "cr", label: "CR Chart", icon: PieChart },
 ];
 
 // Chart titles by type and data type
 const chartTitles = {
   protocols: {
-    bar: "Protocol Transaction Amounts by Type",
-    line: "Monthly Protocol Activity",
-    pie: "Protocol Transaction Distribution",
-  },
-  yields: {
-    bar: "Yield Transaction Amounts by Type",
-    line: "Monthly Yield Activity",
-    pie: "Yield Transaction Distribution",
+    tvl: "Protocol TVL History",
+    cr: "Protocol CR History",
   },
   troves: {
-    bar: "Trove Transaction Amounts by Type",
-    line: "Monthly Trove Activity",
-    pie: "Trove Transaction Distribution",
+    tvl: "Trove TVL History",
+    cr: "Trove CR History",
   },
 };
 
@@ -55,10 +50,26 @@ export function ChartContainer({
   data,
   monthlyData,
   dataType,
+  chartData,
   onChangeType,
   onRemove,
+  selectedTroveManagerIndex,
 }: ChartContainerProps) {
   const [isHovering, setIsHovering] = useState(false);
+
+  // Make sure we properly extract tvlHistory or provide a default empty array
+  const tvlHistory = chartData?.tvlHistory || [];
+  const crHistory = chartData?.crHistory || [];
+
+  console.log("Chart data received:", chartData); // Debug logging
+  console.log("TVL History:", tvlHistory); // Debug logging
+  console.log("CR History:", crHistory); // Debug logging
+
+  // Filter available chart types based on whether a trove manager is selected
+  const availableChartTypes =
+    selectedTroveManagerIndex !== null
+      ? chartTypes // Show all chart types when trove manager is selected
+      : chartTypes.filter((type) => type.value === "tvl"); // Only show TVL option when no trove manager
 
   // Get the current chart type icon
   const ChartIcon =
@@ -80,15 +91,14 @@ export function ChartContainer({
         <div className="flex items-center gap-2">
           <Select
             value={chartType}
-            onValueChange={(value) =>
-              onChangeType(value as "bar" | "line" | "pie")
-            }
+            onValueChange={(value) => onChangeType(value as "tvl" | "cr")}
+            disabled={chartType === "cr" && selectedTroveManagerIndex === null}
           >
             <SelectTrigger className="w-[140px] h-8">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
-              {chartTypes.map((type) => (
+              {availableChartTypes.map((type) => (
                 <SelectItem key={type.value} value={type.value}>
                   <div className="flex items-center">
                     <type.icon className="h-4 w-4 mr-2" />
@@ -109,13 +119,11 @@ export function ChartContainer({
         </div>
       </CardHeader>
       <CardContent className="py-2">
-        <TransactionChart
-          data={data}
-          monthlyData={monthlyData}
-          type={chartType}
-          dataType={dataType}
-          height={250}
-        />
+        {chartType === "tvl" ? (
+          <TvlDotPlot data={tvlHistory} height={250} />
+        ) : (
+          <CrPieChart data={crHistory} height={250} />
+        )}
       </CardContent>
     </Card>
   );

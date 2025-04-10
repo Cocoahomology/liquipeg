@@ -71,7 +71,7 @@ export const formatProtocolDataForUI = (data) => {
         url: protocolInfo.url || "",
         troveManagers: chainInfo.troveManagers
           ? Object.values(chainInfo.troveManagers)
-              .map(formatTroveManagerForUI)
+              .map((tm) => formatTroveManagerForUI(tm, protocolId, chain))
               .filter(Boolean)
           : {},
       };
@@ -92,7 +92,7 @@ export const formatProtocolDataForUI = (data) => {
 };
 
 // Extract trove manager formatting to a separate function
-function formatTroveManagerForUI(tm) {
+function formatTroveManagerForUI(tm, protocolId, chain) {
   // Skip trove managers with insufficient data
   if (!tm.colImmutables || !tm.currentColUSD) {
     return null;
@@ -116,6 +116,7 @@ function formatTroveManagerForUI(tm) {
 
   // Only include properties needed for the UI to reduce unnecessary conversions
   return {
+    id: `${protocolId}-${chain}`,
     index: tm.troveManagerIndex,
     collateralSymbol: tm.colImmutables.collTokenSymbol || "Unknown",
     tvl: parseFloat(tm.currentColUSD || "0"),

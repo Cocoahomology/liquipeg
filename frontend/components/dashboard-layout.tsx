@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 // Define the Chart type
 export type ChartConfig = {
   id: string;
-  type: "bar" | "line" | "pie";
+  type: "tvl" | "cr";
 };
 
 interface DashboardLayoutProps {
@@ -26,6 +26,9 @@ interface DashboardLayoutProps {
   disableChartControls?: boolean;
   customTitle?: string;
   changePeriod?: string;
+  onSelectItem?: (item: any) => void;
+  selectedItemChartData?: any;
+  selectedTroveManagerIndex?: number | null; // Add this new prop
 }
 
 export function DashboardLayout({
@@ -34,16 +37,52 @@ export function DashboardLayout({
   disableChartControls = false,
   customTitle,
   changePeriod = "none",
+  onSelectItem,
+  selectedItemChartData,
+  selectedTroveManagerIndex = null, // Add this parameter with default value
 }: DashboardLayoutProps) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [charts, setCharts] = useState<ChartConfig[]>([]);
   const [dataType, setDataType] = useState<"protocols" | "troves">("protocols");
 
-  // Memoize the select item handler
-  const handleSelectItem = useCallback((item: any) => {
-    setSelectedItem(item);
-  }, []);
+  // Track previous value of selectedTroveManagerIndex to detect changes
+  const [prevTroveManagerIndex, setPrevTroveManagerIndex] = useState<
+    number | null
+  >(selectedTroveManagerIndex);
+
+  // Add debug logging
+  console.log(
+    "DashboardLayout received selectedItemChartData:",
+    selectedItemChartData
+  );
+
+  // Effect to clear charts when selectedTroveManagerIndex changes between null and non-null
+  useEffect(() => {
+    const wasNull = prevTroveManagerIndex === null;
+    const isNull = selectedTroveManagerIndex === null;
+
+    // If the nullity status changed (null to not null or vice versa)
+    if (wasNull !== isNull) {
+      console.log("Clearing charts due to trove manager selection change");
+      setCharts([]);
+    }
+
+    // Update previous value for next comparison
+    setPrevTroveManagerIndex(selectedTroveManagerIndex);
+  }, [selectedTroveManagerIndex, prevTroveManagerIndex]);
+
+  // Update the handleSelectItem function to call the parent's onSelectItem
+  const handleSelectItem = useCallback(
+    (item: any) => {
+      console.log("ITEM", item);
+      setSelectedItem(item);
+      if (onSelectItem) {
+        onSelectItem(item);
+      }
+    },
+    [onSelectItem]
+  );
 
   // Determine data type based on the first item's properties - memoize this calculation
   useEffect(() => {
@@ -100,18 +139,24 @@ export function DashboardLayout({
   const addChart = useCallback(() => {
     const newChart: ChartConfig = {
       id: uuidv4(),
-      type: "bar", // Default chart type
+      // Only allow CR chart type if a trove manager is selected
+      type: "tvl", // Default is always tvl
     };
     setCharts((prev) => [...prev, newChart]);
   }, []);
 
   const updateChartType = useCallback(
-    (id: string, type: "bar" | "line" | "pie") => {
+    (id: string, type: "tvl" | "cr") => {
+      // Only allow updating to CR if a trove manager is selected
+      if (type === "cr" && selectedTroveManagerIndex === null) {
+        return; // Don't update if trying to set CR without a trove manager
+      }
+
       setCharts((prev) =>
         prev.map((chart) => (chart.id === id ? { ...chart, type } : chart))
       );
     },
-    []
+    [selectedTroveManagerIndex]
   );
 
   const removeChart = useCallback((id: string) => {
@@ -167,11 +212,13 @@ export function DashboardLayout({
     return "Analytics";
   }, [customTitle, selectedItem]);
 
-  // Render chart content based on whether a custom panel is provided
   const renderChartContent = () => {
     if (customChartPanel) {
       return customChartPanel;
     }
+
+    // If there's chart data for the selected item, use it
+    const chartDataToUse = selectedItemChartData || {};
 
     return (
       <div className="space-y-4">
@@ -189,18 +236,28 @@ export function DashboardLayout({
             </Button>
           </div>
         ) : (
-          charts.map((chart) => (
-            <ChartContainer
-              key={chart.id}
-              chartId={chart.id}
-              chartType={chart.type}
-              data={transactionsData}
-              monthlyData={monthlyData}
-              dataType={dataType}
-              onChangeType={(type) => updateChartType(chart.id, type)}
-              onRemove={() => removeChart(chart.id)}
-            />
-          ))
+          charts.map((chart) => {
+            console.log(
+              "Rendering chart with ID:",
+              chart.id,
+              "and passing chartData:",
+              selectedItemChartData
+            );
+            return (
+              <ChartContainer
+                key={chart.id}
+                chartId={chart.id}
+                chartType={chart.type}
+                data={transactionsData}
+                monthlyData={monthlyData}
+                dataType={dataType}
+                chartData={selectedItemChartData}
+                onChangeType={(type) => updateChartType(chart.id, type)}
+                onRemove={() => removeChart(chart.id)}
+                selectedTroveManagerIndex={selectedTroveManagerIndex}
+              />
+            );
+          })
         )}
       </div>
     );

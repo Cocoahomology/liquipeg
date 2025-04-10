@@ -10,25 +10,43 @@ import { fetchWithErrorLogging } from "~/utils/async";
 
 const fetch = fetchWithErrorLogging;
 
+const defaultChartDaysToFetch = 60;
+
+const getStartTimestampForChart = (daysToFetch: number) => {
+  const currentDate = new Date();
+  const startDate = new Date(currentDate);
+  startDate.setDate(startDate.getDate() - daysToFetch);
+  return Math.floor(startDate.getTime() / 1000); // Convert to seconds
+};
+
 export const getProtocols = () =>
   fetch(PROTOCOL_CONFIG_API).then((r) => r.json());
 
 const getPoolDataChart = async (
   protocolId: number,
   chain: string,
-  troveManagerIndex?: number
+  troveManagerIndex?: number,
+  useDefaultStartTimestamp?: boolean
 ) => {
   for (let i = 0; i < 5; i++) {
     try {
+      let url = `${POOL_DATA_CHART_API}/${protocolId}/${chain}`;
+
       if (troveManagerIndex !== undefined) {
-        return await fetch(
-          `${POOL_DATA_CHART_API}/${protocolId}/${chain}?troveManagerIndex=${troveManagerIndex}`
-        ).then((resp) => resp.json());
-      } else {
-        return await fetch(
-          `${POOL_DATA_CHART_API}/${protocolId}/${chain}`
-        ).then((resp) => resp.json());
+        url += `?troveManagerIndex=${troveManagerIndex}`;
       }
+
+      if (useDefaultStartTimestamp) {
+        const startTimestamp = getStartTimestampForChart(
+          defaultChartDaysToFetch
+        );
+        url +=
+          troveManagerIndex !== undefined
+            ? `&startTimestamp=${startTimestamp}`
+            : `?startTimestamp=${startTimestamp}`;
+      }
+
+      return await fetch(url).then((resp) => resp.json());
     } catch (e) {}
   }
   throw new Error(
@@ -62,19 +80,28 @@ const getLatestTroves = async (
 const getEvents = async (
   protocolId: number,
   chain: string,
-  troveManagerIndex?: number
+  troveManagerIndex?: number,
+  useDefaultStartTimestamp?: boolean
 ) => {
   for (let i = 0; i < 5; i++) {
     try {
+      let url = `${EVENTS_API}/${protocolId}/${chain}`;
+
       if (troveManagerIndex !== undefined) {
-        return await fetch(
-          `${EVENTS_API}/${protocolId}/${chain}?troveManagerIndex=${troveManagerIndex}`
-        ).then((resp) => resp.json());
-      } else {
-        return await fetch(`${EVENTS_API}/${protocolId}/${chain}`).then(
-          (resp) => resp.json()
-        );
+        url += `?troveManagerIndex=${troveManagerIndex}`;
       }
+
+      if (useDefaultStartTimestamp) {
+        const startTimestamp = getStartTimestampForChart(
+          defaultChartDaysToFetch
+        );
+        url +=
+          troveManagerIndex !== undefined
+            ? `&startTimestamp=${startTimestamp}`
+            : `?startTimestamp=${startTimestamp}`;
+      }
+
+      return await fetch(url).then((resp) => resp.json());
     } catch (e) {}
   }
   throw new Error(
@@ -164,7 +191,12 @@ export async function fetchRawProtocolsData() {
             chainImmutables.troveManagers.map(async ({ troveManagerIndex }) => {
               const poolDataChart = await fetchWithRetries(
                 () =>
-                  getPoolDataChart(protocolId, chainName, troveManagerIndex),
+                  getPoolDataChart(
+                    protocolId,
+                    chainName,
+                    troveManagerIndex,
+                    true
+                  ),
                 `Failed to fetch pool data after 5 attempts for protocol ${protocolId}, chain ${chainName}, troveManager ${troveManagerIndex}`
               );
 
@@ -178,7 +210,7 @@ export async function fetchRawProtocolsData() {
               );
 
               const eventData = await fetchWithRetries(
-                () => getEvents(protocolId, chainName, troveManagerIndex),
+                () => getEvents(protocolId, chainName, troveManagerIndex, true),
                 `Failed to fetch event data after 5 attempts for protocol ${protocolId}, chain ${chainName}, troveManager ${troveManagerIndex}`
               );
 
