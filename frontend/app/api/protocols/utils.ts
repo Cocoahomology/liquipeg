@@ -242,8 +242,7 @@ export function formatProtocolData(
         const latestPoolData = poolDataPoints[poolDataPoints.length - 1];
         const latestPriceData = priceDataPoints[priceDataPoints.length - 1];
 
-        // Skip if missing required data
-        if (!latestPoolData || !latestPriceData) return;
+        // Skip if missiF    if (!latestPoolData || !latestPriceData) return;
 
         // Calculate current metrics - only process the essential ones
         calculateCurrentMetrics(
@@ -541,7 +540,7 @@ function calculatePercentageChangesForTrove(troveManager: TroveManager): void {
 // Process trove data for interest rates and liquidation prices
 function processAdvancedTroveMetrics(
   troveManager: TroveManager,
-  troveData: TroveData[] | null,
+  troveData: any[] | null,
   colImmutables: ColImmutables
 ): void {
   // Initialize advanced metrics
@@ -552,16 +551,8 @@ function processAdvancedTroveMetrics(
   if (!troveData) return;
   if (!Array.isArray(troveData) || troveData.length === 0) return;
 
-  if (!troveData || !troveData.length) return;
-
-  // Find the trove data entry that matches this trove manager
-  const matchingTroveData = troveData.find(
-    (td) => td.troveManagerIndex === troveManager.troveManagerIndex
-  );
-
-  if (!matchingTroveData || !matchingTroveData.troveData) return;
-
-  const actualTroveData = matchingTroveData.troveData;
+  // troveData is now directly the array of trove objects
+  const actualTroveData = troveData;
 
   // Calculate interest rate metrics from active troves
   const activeInterestRates = actualTroveData

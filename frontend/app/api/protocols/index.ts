@@ -237,13 +237,12 @@ export async function fetchRawProtocolsData() {
                 }
               });
 
-              // Process troveData to only keep required fields
+              // Process troveData to only keep the troveData array directly
               const processedTroveData = troveData
-                ? troveData.map((entry) => ({
-                    troveManagerIndex: entry.troveManagerIndex,
-                    troveData: entry.troveData,
-                  }))
-                : null;
+                ? troveData.find(
+                    (entry) => entry.troveManagerIndex === troveManagerIndex
+                  )?.troveData || []
+                : [];
 
               // Store as object with troveManagerIndex as key
               protocolDataByName[protocolId].chainData[chainName].troveManagers[
