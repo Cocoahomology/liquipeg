@@ -13,11 +13,12 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTheme } from "next-themes";
 
 // Define the Chart type
 export type ChartConfig = {
   id: string;
-  type: "tvl" | "cr";
+  type: "tvl" | "cr" | "crDa";
 };
 
 interface DashboardLayoutProps {
@@ -56,6 +57,10 @@ export function DashboardLayout({
     "DashboardLayout received selectedItemChartData:",
     selectedItemChartData
   );
+
+  // Get the current theme from next-themes
+  const { theme } = useTheme();
+  const isDarkMode = theme === "dark";
 
   // Effect to clear charts when selectedTroveManagerIndex changes between null and non-null
   useEffect(() => {
@@ -146,7 +151,7 @@ export function DashboardLayout({
   }, []);
 
   const updateChartType = useCallback(
-    (id: string, type: "tvl" | "cr") => {
+    (id: string, type: "tvl" | "cr" | "crDa") => {
       // Only allow updating to CR if a trove manager is selected
       if (type === "cr" && selectedTroveManagerIndex === null) {
         return; // Don't update if trying to set CR without a trove manager

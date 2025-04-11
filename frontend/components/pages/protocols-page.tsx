@@ -4,7 +4,8 @@ import {
   useGetProtocolsOverviewData,
   formatProtocolDataForUI,
 } from "@/app/api/protocols/client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { getRandomColor } from "~/utils";
 
 // Interface for our formatted protocol data
 interface FormattedProtocolData {
@@ -58,30 +59,375 @@ interface FormattedProtocolData {
   troveManagerChartData?: any; // New field for trove manager chart data
 }
 
-function generateChartData(protocol: any) {
+// Helper function to get a color based on index
+function getColorForIndex(index: number) {
+  // Array of colors to use for different trove managers
+  const colors = [
+    "#f87171", // Red
+    "#60a5fa", // Blue
+    "#4ade80", // Green
+    "#facc15", // Yellow
+    "#a78bfa", // Purple
+    "#fb923c", // Orange
+    "#34d399", // Emerald
+    "#f472b6", // Pink
+  ];
+
+  // Return a color from the array, wrapping around if needed
+  return colors[index % colors.length];
+}
+
+function generateChartData(protocol: any, chain: string) {
+  console.log("PROTOCOL FOR CHART DATA:", protocol, "Chain:", chain);
+
+  // Initialize series array for our chart
+  const crDaSeries = [];
+
+  /*
+  // Create a lookup to store total daily liquidations
+  const dailyLiquidations = new Map<number, number>();
+
+  // Process each trove manager's event data to collect liquidation data
+  Object.entries(protocol.chainData[chain].troveManagers).forEach(
+    ([troveManagerIndex, troveManagerData]: [string, any]) => {
+      const { eventData } = troveManagerData;
+
+      if (!eventData || !Array.isArray(eventData)) {
+        return;
+      }
+
+      // Process each event entry
+      eventData.forEach((entry) => {
+        if (!entry.timestamp || !entry.events || !Array.isArray(entry.events)) {
+          return;
+        }
+
+        const timestamp = entry.timestamp * 1000; // Convert to milliseconds
+
+        // Get day-level timestamp (midnight of the day)
+        const date = new Date(timestamp);
+        date.setHours(0, 0, 0, 0);
+        const dayTimestamp = date.getTime();
+
+        // Sum liquidation amounts for this entry
+        let entryLiquidationSum = 0;
+
+        entry.events.forEach((event) => {
+          if (event.operation === 5 || event.eventData?.operation === "5") {
+            const debtChange = parseFloat(
+              event.eventData?.debtChangeFromOperation || "0"
+            );
+            if (debtChange < 0) {
+              // Add absolute value of debt change
+              entryLiquidationSum += Math.abs(debtChange);
+            }
+          }
+        });
+
+        // Add to daily total
+        if (entryLiquidationSum > 0) {
+          const currentTotal = dailyLiquidations.get(dayTimestamp) || 0;
+          dailyLiquidations.set(
+            dayTimestamp,
+            currentTotal + entryLiquidationSum
+          );
+        }
+      });
+    }
+  )
+
+  // Create liquidation data series if we have liquidation data
+  if (dailyLiquidations.size > 0) {
+    // Convert Map to array of data points, sorted by date
+    const liquidationData = Array.from(dailyLiquidations.entries())
+      .map(([timestamp, value]) => ({
+        date: timestamp,
+        value: value / 1e18, // Convert from wei to token units
+      }))
+      .sort((a, b) => a.date - b.date);
+
+    // Add liquidation series to chart data
+    crDaSeries.push({
+      name: "Daily Liquidations",
+      type: "bar",
+      data: liquidationData,
+      color: getRandomColor(), // Purple color for liquidations
+      yAxisIndex: 0, // Use left axis (USD)
+      barWidth: 10, // Slim bars
+    });
+  }
+  */
+
+  // Process each trove manager's data for collateral ratio
+  Object.entries(protocol.chainData[chain].troveManagers).forEach(
+    ([troveManagerIndex, troveManagerData]: [string, any]) => {
+      const { poolDataPoints, priceDataPoints, colImmutables } =
+        troveManagerData;
+      const { collTokenSymbol: symbol, collTokenDecimals } = colImmutables;
+
+      // Get decimal multiplier - default to 18 if not specified
+      const decimalsMultiplier = Math.pow(
+        10,
+        parseInt(collTokenDecimals || "18", 10)
+      );
+
+      // Skip if we don't have valid data
+      if (
+        !poolDataPoints ||
+        !priceDataPoints ||
+        poolDataPoints.length === 0 ||
+        priceDataPoints.length === 0
+      ) {
+        return;
+      }
+
+      // Create a lookup table for price data based on timestamp
+      const priceByTimestamp = {};
+      priceDataPoints.forEach((point) => {
+        priceByTimestamp[point.timestamp] = point;
+      });
+
+      // Arrays to store both CR and TVL data points
+      const ratioData = [];
+      const tvlData = [];
+
+      // Calculate data for each point in poolDataPoints
+      poolDataPoints.forEach((poolPoint) => {
+        // Find the closest price data for this timestamp
+        const pricePoint =
+          priceByTimestamp[poolPoint.timestamp] ||
+          findClosestPricePoint(poolPoint.timestamp, priceDataPoints);
+
+        if (
+          !pricePoint ||
+          !poolPoint.getEntireSystemColl ||
+          !poolPoint.getEntireSystemDebt
+        ) {
+          return;
+        }
+
+        // Parse values as numbers
+        const systemColl = parseFloat(poolPoint.getEntireSystemColl);
+        const systemDebt = parseFloat(poolPoint.getEntireSystemDebt);
+        const colPrice = parseFloat(
+          pricePoint.colUSDPriceFeed || pricePoint.colUSDOracle
+        );
+
+        // Skip if any value is invalid
+        if (
+          isNaN(systemColl) ||
+          isNaN(systemDebt) ||
+          isNaN(colPrice) ||
+          systemDebt === 0
+        ) {
+          return;
+        }
+
+        const timestamp = poolPoint.timestamp * 1000; // Convert to milliseconds for chart
+
+        const tvl = (systemColl / decimalsMultiplier) * colPrice;
+        tvlData.push({
+          date: timestamp,
+          value: tvl,
+        });
+
+        const normalizedColl =
+          systemColl * (Math.pow(10, 18) / decimalsMultiplier);
+        const ratio = ((normalizedColl * colPrice) / systemDebt) * 100;
+        ratioData.push({
+          date: timestamp,
+          value: ratio,
+        });
+      });
+
+      // Get a fixed color for this trove manager
+      const color = getColorForIndex(parseInt(troveManagerIndex));
+
+      // Add this trove manager's TVL data as a series (if we have data)
+      if (tvlData.length > 0) {
+        crDaSeries.push({
+          name: `${symbol || "?"}`,
+          type: "line",
+          data: tvlData,
+          color: color,
+          yAxisIndex: 0, // Use left axis (USD) for TVL
+          showInLegend: false,
+        });
+      }
+
+      // Add this trove manager's ratio data as a series (if we have data)
+      if (ratioData.length > 0) {
+        crDaSeries.push({
+          name: `${symbol || "?"}`,
+          type: "line",
+          data: ratioData,
+          color: color,
+          yAxisIndex: 1, // Use right axis for ratio
+        });
+      }
+    }
+  );
+
+  // Return the chart data object
   return {
-    // Example chart data structure with more obvious values for testing
     tvlHistory: [10000000, 12000000, 15000000, 13000000, 16000000, 50000000],
-    // Add any other chart data processing here
+    crDaData: {
+      title: protocol.protocolInfo.displayName
+        ? `${protocol.protocolInfo.displayName} CR/TVL`
+        : "CR/TVL",
+      series: crDaSeries,
+      leftAxisName: "TVL (USD)",
+      rightAxisName: "Ratio (%)",
+    },
   };
 }
 
-function generateTroveManagerChartData(protocol: any) {
-  return {
-    // Example trove manager chart data with different values than protocol chart data
-    "0": {
-      tvlHistory: [1800, 1850, 1900, 1750, 1700, 1900],
-      crHistory: [1, 3, 6],
-    },
-    "1": {
-      tvlHistory: [1200, 1850, 1900, 1750, 1000, 1800],
-      crHistory: [5, 3, 8],
-    },
-    "2": {
-      tvlHistory: [800, 1850, 2500, 1750, 1700, 2500],
-      crHistory: [1, 2, 9],
-    },
-  };
+// Helper function to find the closest price point by timestamp
+function findClosestPricePoint(timestamp: number, priceDataPoints: any[]) {
+  if (!priceDataPoints || priceDataPoints.length === 0) return null;
+
+  // Sort by how close each point is to the target timestamp
+  const sortedPoints = [...priceDataPoints].sort((a, b) => {
+    return (
+      Math.abs(a.timestamp - timestamp) - Math.abs(b.timestamp - timestamp)
+    );
+  });
+
+  return sortedPoints[0];
+}
+
+function generateTroveManagerChartData(protocol: any, chain: string) {
+  // Object to store chart data for each trove manager
+  const troveManagerCharts = {};
+
+  // Process each trove manager's data for collateral ratio
+  Object.entries(protocol.chainData[chain].troveManagers).forEach(
+    ([troveManagerIndex, troveManagerData]: [string, any]) => {
+      const { poolDataPoints, priceDataPoints, colImmutables } =
+        troveManagerData;
+      const { collTokenSymbol: symbol, collTokenDecimals } = colImmutables;
+
+      // Get decimal multiplier - default to 18 if not specified
+      const decimalsMultiplier = Math.pow(
+        10,
+        parseInt(collTokenDecimals || "18", 10)
+      );
+
+      // Skip if we don't have valid data
+      if (
+        !poolDataPoints ||
+        !priceDataPoints ||
+        poolDataPoints.length === 0 ||
+        priceDataPoints.length === 0
+      ) {
+        return;
+      }
+
+      // Create a lookup table for price data based on timestamp
+      const priceByTimestamp = {};
+      priceDataPoints.forEach((point) => {
+        priceByTimestamp[point.timestamp] = point;
+      });
+
+      // Arrays to store both CR and TVL data points
+      const ratioData = [];
+      const tvlData = [];
+
+      // Calculate data for each point in poolDataPoints
+      poolDataPoints.forEach((poolPoint) => {
+        // Find the closest price data for this timestamp
+        const pricePoint =
+          priceByTimestamp[poolPoint.timestamp] ||
+          findClosestPricePoint(poolPoint.timestamp, priceDataPoints);
+
+        if (
+          !pricePoint ||
+          !poolPoint.getEntireSystemColl ||
+          !poolPoint.getEntireSystemDebt
+        ) {
+          return;
+        }
+
+        // Parse values as numbers
+        const systemColl = parseFloat(poolPoint.getEntireSystemColl);
+        const systemDebt = parseFloat(poolPoint.getEntireSystemDebt);
+        const colPrice = parseFloat(
+          pricePoint.colUSDPriceFeed || pricePoint.colUSDOracle
+        );
+
+        // Skip if any value is invalid
+        if (
+          isNaN(systemColl) ||
+          isNaN(systemDebt) ||
+          isNaN(colPrice) ||
+          systemDebt === 0
+        ) {
+          return;
+        }
+
+        const timestamp = poolPoint.timestamp * 1000; // Convert to milliseconds for chart
+
+        // Calculate TVL (systemColl * colPrice with proper decimals)
+        const tvl = (systemColl / decimalsMultiplier) * colPrice;
+        tvlData.push({
+          date: timestamp,
+          value: tvl,
+        });
+
+        // Calculate ratio (convert to percentage)
+        const normalizedColl =
+          systemColl * (Math.pow(10, 18) / decimalsMultiplier);
+        const ratio = ((normalizedColl * colPrice) / systemDebt) * 100;
+        ratioData.push({
+          date: timestamp,
+          value: ratio,
+        });
+      });
+
+      const color1 = getColorForIndex(parseInt(troveManagerIndex));
+      const color2 = getColorForIndex(parseInt(troveManagerIndex + 1));
+
+      // Create the series array
+      const series = [];
+
+      // Add TVL series (if we have data)
+      if (tvlData.length > 0) {
+        series.push({
+          name: `${symbol || "?"}`,
+          type: "line",
+          data: tvlData,
+          color: color1,
+          yAxisIndex: 0, // Use left axis (USD) for TVL
+          showInLegend: false,
+        });
+      }
+
+      // Add ratio series (if we have data)
+      if (ratioData.length > 0) {
+        series.push({
+          name: `${symbol || "?"}`,
+          type: "line",
+          data: ratioData,
+          color: color2,
+          yAxisIndex: 1, // Use right axis for ratio
+        });
+      }
+
+      // Create chart data for this trove manager if we have data
+      if (series.length > 0) {
+        troveManagerCharts[troveManagerIndex] = {
+          crDaData: {
+            title: `${symbol || "TM-" + troveManagerIndex} CR/TVL`,
+            series: series,
+            leftAxisName: "TVL (USD)",
+            rightAxisName: "Ratio (%)",
+          },
+        };
+      }
+    }
+  );
+
+  return troveManagerCharts;
 }
 
 interface ProtocolsPageProps {
@@ -110,8 +456,8 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
 
     // Attach chart data to each formatted protocol
     return formatted.map((protocol) => {
-      // Extract protocol ID from the compound ID (format: "id-chain")
-      const [protocolId] = protocol.id.split("-");
+      // Extract protocol ID and chain from the compound ID (format: "id-chain")
+      const [protocolId, chain] = protocol.id.split("-");
 
       // Check if protocolsData is an array or an object with keys
       const rawProtocol = Array.isArray(protocolsData)
@@ -120,13 +466,26 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
 
       return {
         ...protocol,
-        chartData: rawProtocol ? generateChartData(rawProtocol) : undefined,
+        chartData: rawProtocol
+          ? generateChartData(rawProtocol, chain)
+          : undefined,
         troveManagerChartData: rawProtocol
-          ? generateTroveManagerChartData(rawProtocol)
+          ? generateTroveManagerChartData(rawProtocol, chain)
           : undefined,
       };
     });
   }, [protocolsData]);
+
+  // Auto-select the first protocol when data is loaded
+  useEffect(() => {
+    if (!selectedProtocolId && formattedData.length > 0) {
+      const firstProtocol = formattedData[0];
+      setSelectedProtocolId(firstProtocol.id);
+      console.log(
+        `Auto-selected first protocol: ${firstProtocol.id}, ${firstProtocol.name}`
+      );
+    }
+  }, [formattedData, selectedProtocolId]);
 
   // Get chart data for selected protocol or trove manager
   const selectedChartData = useMemo(() => {
