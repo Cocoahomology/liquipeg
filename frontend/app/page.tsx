@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { ProtocolsPage } from "@/components/pages/protocols-page";
 import { YieldsPage } from "@/components/pages/yields-page";
 import { TrovesPage } from "@/components/pages/troves-page";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getProtocolsOverviewPageData } from "@/app/api/protocols";
+import {
+  getProtocolsOverviewPageData,
+  fetchRawProtocolsData,
+} from "@/app/api/protocols";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -21,23 +24,10 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState("protocols");
   const [loading, setLoading] = useState(false);
   const [changePeriod, setChangePeriod] = useState("1d"); // Default to 1d
-  const [isSticky, setIsSticky] = useState(false);
 
   // Use useCallback to memoize the changePeriod handler
   const handleChangePeriod = useCallback((value: string) => {
     setChangePeriod(value);
-  }, []);
-
-  // Handle scroll events to determine when to make the header sticky
-  useEffect(() => {
-    const handleScroll = () => {
-      // Make header sticky after scrolling past a threshold
-      const scrollThreshold = 100;
-      setIsSticky(window.scrollY > scrollThreshold);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const handleTestClick = async () => {
@@ -45,6 +35,7 @@ export default function Home() {
       setLoading(true);
       console.log("Fetching protocol data...");
       const data = await getProtocolsOverviewPageData();
+      //const data = await fetchRawProtocolsData();
       console.log("Protocol data:", data);
     } catch (error) {
       console.error("Error fetching protocol data:", error);
@@ -55,15 +46,8 @@ export default function Home() {
 
   return (
     <>
-      {/* Header with sticky functionality */}
-      <div
-        className={cn(
-          "transition-all duration-200 ease-in-out w-full bg-background z-30",
-          isSticky
-            ? "fixed top-0 left-0 shadow-md py-2 px-4 border-b" // Increased from py-2 to py-3
-            : "relative pt-6 pb-0" // Increased from py-2 to py-3 for more space above
-        )}
-      >
+      {/* Simple header without sticky functionality */}
+      <div className="w-full bg-background border-b py-6">
         <div className="container max-w-screen-xl mx-auto">
           <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
             {/* Left side with logo and tabs */}
@@ -128,11 +112,9 @@ export default function Home() {
           </div>
         </div>
       </div>
-      {/* Add a smaller spacer when header becomes sticky */}
-      {isSticky && <div className="h-16"></div>}{" "}
-      {/* Increased from h-14 to h-16 */}
-      {/* Content area - even less padding when not sticky */}
-      <div className={cn("container", isSticky ? "py-3" : "pt-0 pb-4")}>
+
+      {/* Content area with consistent padding */}
+      <div className="container py-4">
         {currentPage === "protocols" && (
           <ProtocolsPage key="protocols" changePeriod={changePeriod} />
         )}
