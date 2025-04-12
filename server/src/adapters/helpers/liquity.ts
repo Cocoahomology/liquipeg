@@ -1,5 +1,6 @@
 import { type ChainApi } from "@defillama/sdk";
 import { EventData, CoreColImmutables, ColPoolData } from "../../utils/types";
+import { ImmutablesAbi, CorePoolAbi } from "../types";
 import { getEvmEventLogs } from "../../utils/processTransactions";
 import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManagerAbi.json";
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
@@ -129,24 +130,24 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
   };
 }
 
-export function getImmutablesByColRegistry(colRegistryAddress: string, protocolId: number) {
+export function getImmutablesByColRegistry(colRegistryAddress: string, protocolId: number, abi: ImmutablesAbi) {
   return async (api: ChainApi) => {
     const boldToken = (await api.call({
-      abi: "address:boldToken",
+      abi: abi.boldToken,
       target: colRegistryAddress,
     })) as string;
     const boldTokenSymbol = (await api.call({
-      abi: "string:symbol",
+      abi: abi.tokenSymbol,
       target: boldToken,
     })) as string;
     const troveManagersList = (await api.fetchList({
-      lengthAbi: "totalCollaterals",
-      itemAbi: "getTroveManager",
+      lengthAbi: abi.fetchTroveManagers.lengthAbi,
+      itemAbi: abi.fetchTroveManagers.itemAbi,
       target: colRegistryAddress,
     })) as string[];
 
     const activePoolsList = await api.multiCall({
-      abi: "address:activePool",
+      abi: abi.activePool,
       calls: troveManagersList,
     });
 
@@ -193,34 +194,34 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
       troveNFTList,
       priceFeedList,
     ] = await Promise.all([
-      api.multiCall({ abi: "address:defaultPoolAddress", calls: activePoolsList }),
+      api.multiCall({ abi: abi.defaultPoolAddress, calls: activePoolsList }),
       api
-        .multiCall({ abi: "uint256:CCR", calls: addressesRegistryList.map((item) => item.address) })
+        .multiCall({ abi: abi.CCR, calls: addressesRegistryList.map((item) => item.address) })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:SCR", calls: addressesRegistryList.map((item) => item.address) })
+        .multiCall({ abi: abi.SCR, calls: addressesRegistryList.map((item) => item.address) })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:MCR", calls: addressesRegistryList.map((item) => item.address) })
+        .multiCall({ abi: abi.MCR, calls: addressesRegistryList.map((item) => item.address) })
         .then((res) => res.map((item) => String(item))),
-      api.multiCall({ abi: "address:interestRouter", calls: addressesRegistryList.map((item) => item.address) }),
-      api.multiCall({ abi: "address:collToken", calls: addressesRegistryList.map((item) => item.address) }),
-      api.multiCall({ abi: "address:stabilityPool", calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.interestRouter, calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.collToken, calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.stabilityPool, calls: addressesRegistryList.map((item) => item.address) }),
       api.multiCall({
-        abi: "address:borrowerOperationsAddress",
+        abi: abi.borrowerOperationsAddress,
         calls: activePoolsList,
       }),
-      api.multiCall({ abi: "address:sortedTroves", calls: addressesRegistryList.map((item) => item.address) }),
-      api.multiCall({ abi: "address:troveNFT", calls: addressesRegistryList.map((item) => item.address) }),
-      api.multiCall({ abi: "address:priceFeed", calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.sortedTroves, calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.troveNFT, calls: addressesRegistryList.map((item) => item.address) }),
+      api.multiCall({ abi: abi.priceFeed, calls: addressesRegistryList.map((item) => item.address) }),
     ]);
 
     const collTokenDecimalsList = await api
-      .multiCall({ abi: "uint8:decimals", calls: collTokenList })
+      .multiCall({ abi: abi.decimals, calls: collTokenList })
       .then((res) => res.map((item) => String(item)));
 
     const collTokenSymbolList = await api
-      .multiCall({ abi: "string:symbol", calls: collTokenList })
+      .multiCall({ abi: abi.symbol, calls: collTokenList })
       .then((res) => res.map((item) => String(item)));
 
     accInterestRouterList = [...interestRouterList];
@@ -265,24 +266,24 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
         const troveManager = troveManagersList[troveManagerIndex];
         const activePool = activePoolsList[troveManagerIndex];
         const borrowerOperationsAddress = (await api.call({
-          abi: "address:borrowerOperationsAddress",
+          abi: abi.borrowerOperationsAddress,
           target: activePool,
         })) as string;
         const [CCR, SCR, MCR, collToken, defaultPool, stabilityPool, interestRouter, sortedTroves, troveNFT] =
           await Promise.all([
-            api.call({ abi: "uint256:CCR", target: borrowerOperationsAddress }).then((res) => String(res)),
-            api.call({ abi: "uint256:SCR", target: borrowerOperationsAddress }).then((res) => String(res)),
-            api.call({ abi: "uint256:MCR", target: borrowerOperationsAddress }).then((res) => String(res)),
-            api.call({ abi: "address:collToken", target: activePool }),
-            api.call({ abi: "address:defaultPoolAddress", target: activePool }),
-            api.call({ abi: "address:stabilityPool", target: activePool }),
-            api.call({ abi: "address:interestRouter", target: activePool }),
-            api.call({ abi: "address:sortedTroves", target: troveManager }),
-            api.call({ abi: "address:troveNFT", target: troveManager }),
+            api.call({ abi: abi.CCR, target: borrowerOperationsAddress }).then((res) => String(res)),
+            api.call({ abi: abi.SCR, target: borrowerOperationsAddress }).then((res) => String(res)),
+            api.call({ abi: abi.MCR, target: borrowerOperationsAddress }).then((res) => String(res)),
+            api.call({ abi: abi.collToken, target: activePool }),
+            api.call({ abi: abi.defaultPoolAddress, target: activePool }),
+            api.call({ abi: abi.stabilityPool, target: activePool }),
+            api.call({ abi: abi.interestRouter, target: activePool }),
+            api.call({ abi: abi.sortedTroves, target: troveManager }),
+            api.call({ abi: abi.troveNFT, target: troveManager }),
           ]);
         accInterestRouterList.push(interestRouter);
-        const collTokenDecimals = String(await api.call({ abi: "uint8:decimals", target: collToken }));
-        const collTokenSymbol = String(await api.call({ abi: "string:symbol", target: collToken }));
+        const collTokenDecimals = String(await api.call({ abi: abi.decimals, target: collToken }));
+        const collTokenSymbol = String(await api.call({ abi: abi.symbol, target: collToken }));
         coreCollateralImmutablesList.push({
           troveManagerIndex: troveManagerIndex,
           CCR: CCR,
@@ -319,7 +320,7 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
   };
 }
 
-export function getCorePoolDataByProtocolId(protocolId: number) {
+export function getCorePoolDataByProtocolId(protocolId: number, abi: CorePoolAbi) {
   return async (api: ChainApi) => {
     const immutableData = await getLatestCoreImmutables(protocolId, api.chain);
     if (!immutableData) {
@@ -328,9 +329,9 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
 
     const { collateralRegistry } = immutableData;
     const [baseRate, getRedemptionRate, totalCollaterals] = await Promise.all([
-      api.call({ abi: "uint256:baseRate", target: collateralRegistry }),
-      api.call({ abi: "uint256:getRedemptionRate", target: collateralRegistry }),
-      api.call({ abi: "uint256:totalCollaterals", target: collateralRegistry }).then((res) => Number(res)),
+      api.call({ abi: abi.baseRate, target: collateralRegistry }),
+      api.call({ abi: abi.getRedemptionRate, target: collateralRegistry }),
+      api.call({ abi: abi.totalCollaterals, target: collateralRegistry }).then((res) => Number(res)),
     ]);
 
     if (Object.keys(immutableData.coreCollateralImmutables).length !== totalCollaterals) {
@@ -373,46 +374,40 @@ export function getCorePoolDataByProtocolId(protocolId: number) {
       getYieldGainsPending,
     ] = await Promise.all([
       api
-        .multiCall({ abi: "uint256:getEntireSystemColl", calls: troveManagerList })
+        .multiCall({ abi: abi.getEntireSystemColl, calls: troveManagerList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:getEntireSystemDebt", calls: troveManagerList })
+        .multiCall({ abi: abi.getEntireSystemDebt, calls: troveManagerList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:getTroveIdsCount", calls: troveManagerList })
+        .multiCall({ abi: abi.getTroveIdsCount, calls: troveManagerList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:aggRecordedDebt", calls: activePoolList })
+        .multiCall({ abi: abi.aggWeightedRecordedDebtSum, calls: activePoolList })
+        .then((res) => res.map((item) => String(item))),
+      api.multiCall({ abi: abi.aggRecordedDebt, calls: activePoolList }).then((res) => res.map((item) => String(item))),
+      api
+        .multiCall({ abi: abi.calcPendingAggInterest, calls: activePoolList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
+        .multiCall({ abi: abi.calcPendingSPYield, calls: activePoolList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:calcPendingSPYield", calls: activePoolList })
+        .multiCall({ abi: abi.lastAggUpdateTime, calls: activePoolList })
+        .then((res) => res.map((item) => String(item))),
+      api.multiCall({ abi: abi.getCollBalance, calls: activePoolList }).then((res) => res.map((item) => String(item))),
+      api.multiCall({ abi: abi.getCollBalance, calls: defaultPoolList }).then((res) => res.map((item) => String(item))),
+      api
+        .multiCall({ abi: abi.getCollBalance, calls: stabilityPoolList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:calcPendingAggInterest", calls: activePoolList })
+        .multiCall({ abi: abi.getTotalBoldDeposits, calls: stabilityPoolList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:lastAggUpdateTime", calls: activePoolList })
+        .multiCall({ abi: abi.getYieldGainsOwed, calls: stabilityPoolList })
         .then((res) => res.map((item) => String(item))),
       api
-        .multiCall({ abi: "uint256:getCollBalance", calls: activePoolList })
-        .then((res) => res.map((item) => String(item))),
-      api
-        .multiCall({ abi: "uint256:getCollBalance", calls: defaultPoolList })
-        .then((res) => res.map((item) => String(item))),
-      api
-        .multiCall({ abi: "uint256:getCollBalance", calls: stabilityPoolList })
-        .then((res) => res.map((item) => String(item))),
-      api
-        .multiCall({ abi: "uint256:getTotalBoldDeposits", calls: stabilityPoolList })
-        .then((res) => res.map((item) => String(item))),
-      api
-        .multiCall({ abi: "uint256:getYieldGainsOwed", calls: stabilityPoolList })
-        .then((res) => res.map((item) => String(item))),
-      api
-        .multiCall({ abi: "uint256:getYieldGainsPending", calls: stabilityPoolList })
+        .multiCall({ abi: abi.getYieldGainsPending, calls: stabilityPoolList })
         .then((res) => res.map((item) => String(item))),
     ]);
 
