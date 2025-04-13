@@ -21,6 +21,7 @@ interface SeriesConfig {
   showInLegend?: boolean; // New property to control legend visibility
 }
 
+// Add rightAxisFormatter to the interface
 interface DualAxisChartProps {
   title: string;
   series: SeriesConfig[];
@@ -33,6 +34,7 @@ interface DualAxisChartProps {
   height?: number;
   darkMode?: boolean;
   dateFormat?: "short" | "medium" | "long"; // Controls date format style
+  rightAxisFormatter?: "percentage" | "currency"; // Add this prop
 }
 
 export function DualAxisChart({
@@ -47,6 +49,7 @@ export function DualAxisChart({
   height = 400,
   darkMode = true,
   dateFormat = "short",
+  rightAxisFormatter = "percentage", // Default to percentage format
 }: DualAxisChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -82,10 +85,7 @@ export function DualAxisChart({
         name: s.name,
         type: s.type,
         yAxisIndex: s.yAxisIndex || 0,
-        data: sortedTimestamps.map((timestamp) => {
-          const point = s.data.find((d) => d.date === timestamp);
-          return point ? point.value : null;
-        }),
+        data: s.data.map((point) => [point.date, point.value]), // Format data as [timestamp, value] pairs
         itemStyle: {
           color: s.color,
         },
@@ -173,9 +173,11 @@ export function DualAxisChart({
             color: darkMode ? "#fff" : "#333",
           },
           formatter: (params: any) => {
-            // Format the timestamp in tooltip
-            const timestamp = sortedTimestamps[params[0].dataIndex];
-            const date = new Date(timestamp);
+            if (!params || params.length === 0) return "";
+
+            // When using time axis, the value is directly available in the data
+            const date = new Date(params[0].value[0]); // First element is the timestamp
+
             const formattedDate = date.toLocaleString("en-US", {
               year: "numeric",
               month: "short",
@@ -197,23 +199,34 @@ export function DualAxisChart({
                 ? seriesConfig.yAxisIndex === 0
                 : param.seriesOption && param.seriesOption.yAxisIndex === 0;
 
+              // With time axis, the value is the second element of the value array
+              const actualValue = param.value[1];
+
               // Format values based on axis
-              let value;
+              let formattedValue;
               if (isLeftAxis) {
                 // Left axis (USD format)
-                value = new Intl.NumberFormat("en-US", {
+                formattedValue = new Intl.NumberFormat("en-US", {
                   style: "currency",
                   currency: "USD",
                   maximumFractionDigits: 0,
-                }).format(param.value || 0);
+                }).format(actualValue || 0);
               } else {
-                // Right axis (percentage format)
+                // Right axis (dynamic formatting based on rightAxisFormatter prop)
                 const numValue =
-                  typeof param.value === "number" ? param.value : 0;
-                value = `${numValue.toFixed(2)}%`;
+                  typeof actualValue === "number" ? actualValue : 0;
+                if (rightAxisFormatter === "currency") {
+                  formattedValue = new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 2,
+                  }).format(numValue);
+                } else {
+                  formattedValue = `${numValue.toFixed(2)}%`;
+                }
               }
 
-              tooltipText += `<div style="margin: 6px 0 0; line-height: 1;">${marker} ${seriesName}: ${value}</div>`;
+              tooltipText += `<div style="margin: 6px 0 0; line-height: 1;">${marker} ${seriesName}: ${formattedValue}</div>`;
             });
 
             return tooltipText;
@@ -233,9 +246,8 @@ export function DualAxisChart({
           containLabel: true,
         },
         xAxis: {
-          type: "category",
-          boundaryGap: false,
-          data: formattedDates,
+          type: "time",
+          boundaryGap: [0, 0],
           axisLine: {
             lineStyle: {
               color: darkMode ? "#555" : "#ddd",
@@ -243,8 +255,49 @@ export function DualAxisChart({
           },
           axisLabel: {
             color: darkMode ? "#e0e0e0" : "#666666",
-            rotate: sortedTimestamps.length > 10 ? 45 : 0,
+            formatter: (value: number) => {
+              const date = new Date(value);
+
+              // Apply the date formatting
+              switch (dateFormat) {
+                case "medium":
+                  return date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                case "long":
+                  return date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  });
+                case "short":
+                default:
+                  return date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+              }
+            },
+            // Increase label rotation and add margin
+            rotate: 45,
+            margin: 8,
+            // Use interval based on time rather than index
+            interval: 3 * 24 * 3600 * 1000, // 3 days in milliseconds
+          } as any,
+
+          // Remove index-based tick interval that causes uneven spacing
+          axisTick: {
+            show: true,
+            // Removed the interval function that was causing uneven spacing
           },
+
+          // Configure time intervals for more consistent spacing
+          minInterval: 24 * 3600 * 1000, // 1 day minimum interval
+          maxInterval: 7 * 24 * 3600 * 1000, // 1 week maximum interval
+
+          splitNumber: 0,
+
           splitLine: {
             show: true,
             lineStyle: {
@@ -298,7 +351,19 @@ export function DualAxisChart({
               },
             },
             axisLabel: {
-              formatter: (value: number) => `${value.toFixed(2)}%`,
+              formatter: (value: number) => {
+                if (rightAxisFormatter === "currency") {
+                  // Format as currency with appropriate scale
+                  if (value >= 1000) {
+                    return `$${(value / 1000).toFixed(1)}K`;
+                  } else {
+                    return `$${value.toFixed(0)}`;
+                  }
+                } else {
+                  // Format as percentage
+                  return `${value.toFixed(2)}%`;
+                }
+              },
               color: darkMode ? "#e0e0e0" : "#666666",
             },
             splitLine: {
@@ -331,6 +396,7 @@ export function DualAxisChart({
     rightAxisMax,
     darkMode,
     dateFormat,
+    rightAxisFormatter,
   ]);
 
   // Handle window resize

@@ -18,7 +18,7 @@ import { useTheme } from "next-themes";
 // Define the Chart type
 export type ChartConfig = {
   id: string;
-  type: "tvl" | "cr" | "crDa";
+  type: "cr" | "crDa" | "pricesLiqs";
 };
 
 interface DashboardLayoutProps {
@@ -145,13 +145,13 @@ export function DashboardLayout({
     const newChart: ChartConfig = {
       id: uuidv4(),
       // Only allow CR chart type if a trove manager is selected
-      type: "tvl", // Default is always tvl
+      type: "crDa", // Default is always crDa
     };
     setCharts((prev) => [...prev, newChart]);
   }, []);
 
   const updateChartType = useCallback(
-    (id: string, type: "tvl" | "cr" | "crDa") => {
+    (id: string, type: "cr" | "crDa" | "pricesLiqs") => {
       // Only allow updating to CR if a trove manager is selected
       if (type === "cr" && selectedTroveManagerIndex === null) {
         return; // Don't update if trying to set CR without a trove manager

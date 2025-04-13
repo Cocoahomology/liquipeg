@@ -10,41 +10,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, BarChart, PieChart } from "lucide-react";
-import { TvlDotPlot } from "./tvl-dot-plot";
+import { X, PieChart, LineChart, BarChart } from "lucide-react";
 import { CrPieChart } from "./cr-pie-chart";
 import { DualAxisChart } from "./dual-axis-chart";
-import { useTheme } from "next-themes"; // Import useTheme
+import { useTheme } from "next-themes";
 
 interface ChartContainerProps {
   chartId: string;
-  chartType: "tvl" | "cr" | "crDa";
+  chartType: "cr" | "crDa" | "pricesLiqs";
   data: any[];
   monthlyData: any[];
   dataType: "protocols" | "troves";
   chartData?: any;
-  onChangeType: (type: "tvl" | "cr" | "crDa") => void;
+  onChangeType: (type: "cr" | "crDa" | "pricesLiqs") => void;
   onRemove: () => void;
   selectedTroveManagerIndex: number | null;
 }
 
 // Chart type options
 const chartTypes = [
-  { value: "tvl", label: "TVL Chart", icon: BarChart },
   { value: "cr", label: "CR Chart", icon: PieChart },
   { value: "crDa", label: "CR/TVL", icon: BarChart },
+  { value: "pricesLiqs", label: "Prices/Liqs", icon: LineChart },
 ];
 
 // Chart titles by type and data type
 const chartTitles = {
   protocols: {
-    tvl: "Protocol TVL History",
     crDa: "CR/TVL",
+    pricesLiqs: "Prices & Liquidations",
   },
   troves: {
-    tvl: "Trove TVL History",
     cr: "Trove CR History",
     crDa: "CR/TVL",
+    pricesLiqs: "Prices & Liquidations",
   },
 };
 
@@ -60,26 +59,25 @@ export function ChartContainer({
   selectedTroveManagerIndex,
 }: ChartContainerProps) {
   const [isHovering, setIsHovering] = useState(false);
-  const { theme } = useTheme(); // Get the theme
-  const isDarkMode = theme === "dark"; // Determine if dark mode is active
+  const { theme } = useTheme();
+  const isDarkMode = theme === "dark";
 
-  // Make sure we properly extract data or provide default empty arrays/objects
-  const tvlHistory = chartData?.tvlHistory || [];
   const crHistory = chartData?.crHistory || [];
   const crDaData = chartData?.crDaData || { series: [] };
+  const pricesLiqsData = chartData?.pricesLiqsData || { series: [] };
 
-  console.log("Chart data received:", chartData); // Debug logging
-  console.log("TVL History:", tvlHistory); // Debug logging
-  console.log("CR History:", crHistory); // Debug logging
-  console.log("CR vs TVL Data:", crDaData); // Debug logging
+  console.log("Chart data received:", chartData);
+  console.log("CR History:", crHistory);
+  console.log("CR vs TVL Data:", crDaData);
+  console.log("Prices & Liqs Data:", pricesLiqsData);
 
-  // Filter available chart types based on whether a trove manager is selected
   const availableChartTypes =
     selectedTroveManagerIndex !== null
-      ? chartTypes // Show all chart types when trove manager is selected
-      : chartTypes.filter((type) => type.value !== "cr"); // Filter out CR chart when no trove manager
+      ? chartTypes
+      : chartTypes.filter(
+          (type) => type.value !== "cr" && type.value !== "pricesLiqs"
+        );
 
-  // Get the current chart type icon
   const ChartIcon =
     chartTypes.find((type) => type.value === chartType)?.icon || BarChart;
 
@@ -100,7 +98,7 @@ export function ChartContainer({
           <Select
             value={chartType}
             onValueChange={(value) =>
-              onChangeType(value as "tvl" | "cr" | "crDa")
+              onChangeType(value as "cr" | "crDa" | "pricesLiqs")
             }
             disabled={chartType === "cr" && selectedTroveManagerIndex === null}
           >
@@ -129,12 +127,23 @@ export function ChartContainer({
         </div>
       </CardHeader>
       <CardContent className="py-2">
-        {chartType === "tvl" ? (
-          <TvlDotPlot data={tvlHistory} height={250} />
-        ) : chartType === "cr" ? (
+        {chartType === "cr" ? (
           <CrPieChart data={crHistory} height={250} />
+        ) : chartType === "pricesLiqs" ? (
+          <DualAxisChart
+            {...pricesLiqsData}
+            height={250}
+            darkMode={isDarkMode}
+            rightAxisName="Price (USD)"
+            rightAxisFormatter="currency"
+          />
         ) : (
-          <DualAxisChart {...crDaData} height={250} darkMode={isDarkMode} />
+          <DualAxisChart
+            {...crDaData}
+            height={250}
+            darkMode={isDarkMode}
+            rightAxisFormatter="percentage"
+          />
         )}
       </CardContent>
     </Card>
