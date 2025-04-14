@@ -4,10 +4,13 @@ import wrap from "../utils/wrap";
 import { getProtocolDetails } from "../db/read";
 import protocolData from "../data/protocolData";
 
-export async function getAllProtocolDetails() {
+export async function getAllProtocolDetails(protocolId?: number) {
   const results = [];
 
-  for (const protocol of protocolData) {
+  const protocolsToProcess =
+    protocolId !== undefined ? protocolData.filter((protocol) => protocol.id === protocolId) : protocolData;
+
+  for (const protocol of protocolsToProcess) {
     const protocolDetails = await getProtocolDetails(protocol.id);
 
     if (protocolDetails) {
@@ -27,8 +30,15 @@ export async function getAllProtocolDetails() {
   return results;
 }
 
-const handler = async (_event: AWSLambda.APIGatewayEvent): Promise<IResponse> => {
-  const response = (await getAllProtocolDetails()) ?? [];
+const handler = async (event: AWSLambda.APIGatewayEvent): Promise<IResponse> => {
+  const protocolIdParam = event.queryStringParameters?.protocolId;
+  const protocolId = protocolIdParam !== undefined ? parseInt(protocolIdParam) : undefined;
+  if (protocolIdParam !== undefined && (isNaN(protocolId!) || protocolId! < 0)) {
+    return errorResponse({
+      message: "protocolId must be a valid positive integer",
+    });
+  }
+  const response = (await getAllProtocolDetails(protocolId)) ?? [];
   return successResponse(response, 10 * 60); // 10 mins cache
 };
 
