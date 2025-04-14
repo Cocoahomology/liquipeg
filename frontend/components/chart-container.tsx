@@ -17,12 +17,12 @@ import { useTheme } from "next-themes";
 
 interface ChartContainerProps {
   chartId: string;
-  chartType: "cr" | "crDa" | "pricesLiqs";
+  chartType: "cr" | "crDa" | "pricesLiqs" | "lstDetails";
   data: any[];
   monthlyData: any[];
   dataType: "protocols" | "troves";
   chartData?: any;
-  onChangeType: (type: "cr" | "crDa" | "pricesLiqs") => void;
+  onChangeType: (type: "cr" | "crDa" | "pricesLiqs" | "lstDetails") => void;
   onRemove: () => void;
   selectedTroveManagerIndex: number | null;
 }
@@ -32,6 +32,7 @@ const chartTypes = [
   { value: "cr", label: "CR Chart", icon: PieChart },
   { value: "crDa", label: "CR/TVL", icon: BarChart },
   { value: "pricesLiqs", label: "Prices/Liqs", icon: LineChart },
+  { value: "lstDetails", label: "LST Details", icon: LineChart },
 ];
 
 // Chart titles by type and data type
@@ -44,6 +45,7 @@ const chartTitles = {
     cr: "Trove CR History",
     crDa: "CR/TVL",
     pricesLiqs: "Prices & Liquidations",
+    lstDetails: "LST Details",
   },
 };
 
@@ -65,6 +67,7 @@ export function ChartContainer({
   const crHistory = chartData?.crHistory || [];
   const crDaData = chartData?.crDaData || { series: [] };
   const pricesLiqsData = chartData?.pricesLiqsData || { series: [] };
+  const lstDetailsData = chartData?.lstDetailsData || { series: [] };
 
   console.log("Chart data received:", chartData);
   console.log("CR History:", crHistory);
@@ -75,7 +78,10 @@ export function ChartContainer({
     selectedTroveManagerIndex !== null
       ? chartTypes
       : chartTypes.filter(
-          (type) => type.value !== "cr" && type.value !== "pricesLiqs"
+          (type) =>
+            type.value !== "cr" &&
+            type.value !== "pricesLiqs" &&
+            type.value !== "lstDetails"
         );
 
   const ChartIcon =
@@ -98,7 +104,7 @@ export function ChartContainer({
           <Select
             value={chartType}
             onValueChange={(value) =>
-              onChangeType(value as "cr" | "crDa" | "pricesLiqs")
+              onChangeType(value as "cr" | "crDa" | "pricesLiqs" | "lstDetails")
             }
             disabled={chartType === "cr" && selectedTroveManagerIndex === null}
           >
@@ -136,6 +142,16 @@ export function ChartContainer({
             darkMode={isDarkMode}
             rightAxisName="Price (USD)"
             rightAxisFormatter="currency"
+          />
+        ) : chartType === "lstDetails" ? (
+          <DualAxisChart
+            {...lstDetailsData}
+            height={250}
+            darkMode={isDarkMode}
+            rightAxisFormatter="decimal"
+            leftAxisFormatter="percentage"
+            rightAxisMin={"dataMin"}
+            rightAxisMax={"dataMax"}
           />
         ) : (
           <DualAxisChart

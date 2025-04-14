@@ -201,7 +201,8 @@ function getColorForIndex(index: number) {
 function calculateTvlAndRatioData(
   poolDataPoints: any[],
   priceDataPoints: any[],
-  decimalsMultiplier: number
+  decimalsMultiplier: number,
+  isLST: boolean
 ) {
   // Create a lookup table for price data based on timestamp
   const priceByTimestamp = {};
@@ -212,6 +213,10 @@ function calculateTvlAndRatioData(
   // Arrays to store both CR and TVL data points
   const ratioData = [];
   const tvlData = [];
+  // New arrays for LST data series
+  const lstMarketRateData = [];
+  const lstCanonicalRateData = [];
+  const lstDeviationData = [];
 
   // Calculate data for each point in poolDataPoints
   poolDataPoints.forEach((poolPoint) => {
@@ -261,9 +266,37 @@ function calculateTvlAndRatioData(
       date: timestamp,
       value: ratio,
     });
+
+    // Compute LST data if isLST is true, else leave arrays empty
+    if (isLST) {
+      if (pricePoint.LSTUnderlyingMarketRate !== undefined) {
+        lstMarketRateData.push({
+          date: timestamp,
+          value: parseFloat(pricePoint.LSTUnderlyingMarketRate),
+        });
+      }
+      if (pricePoint.LSTUnderlyingCanonicalRate !== undefined) {
+        lstCanonicalRateData.push({
+          date: timestamp,
+          value: parseFloat(pricePoint.LSTUnderlyingCanonicalRate),
+        });
+      }
+      if (pricePoint.deviation !== undefined) {
+        lstDeviationData.push({
+          date: timestamp,
+          value: parseFloat(pricePoint.deviation),
+        });
+      }
+    }
   });
 
-  return { tvlData, ratioData };
+  return {
+    tvlData,
+    ratioData,
+    lstMarketRateData: isLST ? lstMarketRateData : [],
+    lstCanonicalRateData: isLST ? lstCanonicalRateData : [],
+    lstDeviationData: isLST ? lstDeviationData : [],
+  };
 }
 
 // Helper function to calculate liquidation data
@@ -402,18 +435,15 @@ function generateChartData(protocol: any, chain: string) {
     ([troveManagerIndex, troveManagerData]: [string, any]) => {
       const { poolDataPoints, priceDataPoints, colImmutables, eventData } =
         troveManagerData;
-      const { collTokenSymbol: symbol, collTokenDecimals } = colImmutables;
 
-      // Skip if we don't have valid immutables
       if (!colImmutables) return;
-
-      // Get decimal multiplier - default to 18 if not specified
+      const { collTokenSymbol: symbol, collTokenDecimals } = colImmutables;
+      // Get isLST flag (default false)
+      const isLST = colImmutables.isLST || false;
       const decimalsMultiplier = Math.pow(
         10,
         parseInt(collTokenDecimals || "18", 10)
       );
-
-      // Skip if we don't have valid data points
       if (
         !poolDataPoints ||
         !priceDataPoints ||
@@ -423,11 +453,11 @@ function generateChartData(protocol: any, chain: string) {
         return;
       }
 
-      // Calculate TVL and ratio data
       const { tvlData, ratioData } = calculateTvlAndRatioData(
         poolDataPoints,
         priceDataPoints,
-        decimalsMultiplier
+        decimalsMultiplier,
+        isLST
       );
 
       // Get a fixed color for this trove manager
@@ -546,10 +576,15 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
     ([troveManagerIndex, troveManagerData]: [string, any]) => {
       const { poolDataPoints, priceDataPoints, colImmutables, eventData } =
         troveManagerData;
-      const { collTokenSymbol: symbol, collTokenDecimals } = colImmutables;
 
       // Skip if we don't have valid immutables
       if (!colImmutables) return;
+
+      const {
+        collTokenSymbol: symbol,
+        collTokenDecimals,
+        isLST,
+      } = colImmutables;
 
       // Get decimal multiplier - default to 18 if not specified
       const decimalsMultiplier = Math.pow(
@@ -568,16 +603,26 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
       }
 
       // Calculate TVL and ratio data
-      const { tvlData, ratioData } = calculateTvlAndRatioData(
+      const {
+        tvlData,
+        ratioData,
+        lstMarketRateData,
+        lstCanonicalRateData,
+        lstDeviationData,
+      } = calculateTvlAndRatioData(
         poolDataPoints,
         priceDataPoints,
-        decimalsMultiplier
+        decimalsMultiplier,
+        isLST
       );
 
       const color = getColorForIndex(parseInt(troveManagerIndex));
+      const color2 = getColorForIndex(parseInt(troveManagerIndex) + 1);
+      const color3 = getColorForIndex(parseInt(troveManagerIndex) + 2);
 
       // Create the series array for CR/TVL chart
       const crDaSeries = [];
+      const lstDetailsSeries = [];
 
       // Add TVL series (if we have data)
       if (tvlData.length > 0) {
@@ -602,6 +647,42 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
             data: ratioData,
             color: color,
             yAxisIndex: 1, // Use right axis for ratio
+          })
+        );
+      }
+
+      if (lstMarketRateData.length > 0) {
+        lstDetailsSeries.push(
+          createChartSeries({
+            name: `Market Rate`,
+            type: "line",
+            data: lstMarketRateData,
+            color: color,
+            yAxisIndex: 1,
+          })
+        );
+      }
+
+      if (lstCanonicalRateData.length > 0) {
+        lstDetailsSeries.push(
+          createChartSeries({
+            name: `Canonical Rate`,
+            type: "line",
+            data: lstCanonicalRateData,
+            color: color2,
+            yAxisIndex: 1,
+          })
+        );
+      }
+
+      if (lstDeviationData.length > 0) {
+        lstDetailsSeries.push(
+          createChartSeries({
+            name: `deviation`,
+            type: "line",
+            data: lstDeviationData,
+            color: color3,
+            yAxisIndex: 0,
           })
         );
       }
@@ -668,6 +749,16 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
           series: crDaSeries,
           leftAxisName: "TVL (USD)",
           rightAxisName: "Ratio (%)",
+        };
+      }
+
+      // Add LST Details chart if we have data
+      if (lstDetailsSeries.length > 0) {
+        troveManagerCharts[troveManagerIndex].lstDetailsData = {
+          title: `${symbol || "TM-" + troveManagerIndex} LST Details`,
+          series: lstDetailsSeries,
+          leftAxisName: "deviation (%)",
+          rightAxisName: "Rates",
         };
       }
 

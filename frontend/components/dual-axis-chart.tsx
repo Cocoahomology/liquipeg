@@ -34,7 +34,8 @@ interface DualAxisChartProps {
   height?: number;
   darkMode?: boolean;
   dateFormat?: "short" | "medium" | "long"; // Controls date format style
-  rightAxisFormatter?: "percentage" | "currency"; // Add this prop
+  rightAxisFormatter?: "percentage" | "currency" | "decimal"; // Updated to include decimal
+  leftAxisFormatter?: "currency" | "decimal" | "percentage"; // Add percentage option
 }
 
 export function DualAxisChart({
@@ -50,6 +51,7 @@ export function DualAxisChart({
   darkMode = true,
   dateFormat = "short",
   rightAxisFormatter = "percentage", // Default to percentage format
+  leftAxisFormatter = "currency", // Default to currency format
 }: DualAxisChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -205,12 +207,21 @@ export function DualAxisChart({
               // Format values based on axis
               let formattedValue;
               if (isLeftAxis) {
-                // Left axis (USD format)
-                formattedValue = new Intl.NumberFormat("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }).format(actualValue || 0);
+                // Left axis (format based on leftAxisFormatter prop)
+                const numValue =
+                  typeof actualValue === "number" ? actualValue : 0;
+                if (leftAxisFormatter === "decimal") {
+                  formattedValue = numValue.toFixed(4); // Show raw decimal with 4 decimal places
+                } else if (leftAxisFormatter === "percentage") {
+                  formattedValue = `${numValue.toFixed(3)}%`; // Format as percentage with 3 decimal places
+                } else {
+                  // Default currency format
+                  formattedValue = new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 0,
+                  }).format(numValue);
+                }
               } else {
                 // Right axis (dynamic formatting based on rightAxisFormatter prop)
                 const numValue =
@@ -221,8 +232,10 @@ export function DualAxisChart({
                     currency: "USD",
                     maximumFractionDigits: 2,
                   }).format(numValue);
+                } else if (rightAxisFormatter === "decimal") {
+                  formattedValue = numValue.toFixed(4); // Show raw decimal with 4 decimal places
                 } else {
-                  formattedValue = `${numValue.toFixed(2)}%`;
+                  formattedValue = `${numValue.toFixed(3)}%`; // Updated to 3 decimal places
                 }
               }
 
@@ -321,13 +334,20 @@ export function DualAxisChart({
             },
             axisLabel: {
               formatter: (value: number) => {
-                // Format currency values
-                if (value >= 1000000) {
-                  return `$${(value / 1000000).toFixed(1)}M`;
-                } else if (value >= 1000) {
-                  return `$${(value / 1000).toFixed(1)}K`;
+                // Format based on leftAxisFormatter
+                if (leftAxisFormatter === "decimal") {
+                  return value.toFixed(4);
+                } else if (leftAxisFormatter === "percentage") {
+                  return `${value.toFixed(2)}%`;
+                } else {
+                  // Default currency formatting
+                  if (value >= 1000000) {
+                    return `$${(value / 1000000).toFixed(1)}M`;
+                  } else if (value >= 1000) {
+                    return `$${(value / 1000).toFixed(1)}K`;
+                  }
+                  return `$${value}`;
                 }
-                return `$${value}`;
               },
               color: darkMode ? "#e0e0e0" : "#666666",
             },
@@ -359,6 +379,9 @@ export function DualAxisChart({
                   } else {
                     return `$${value.toFixed(0)}`;
                   }
+                } else if (rightAxisFormatter === "decimal") {
+                  // Format as decimal number
+                  return value.toFixed(4);
                 } else {
                   // Format as percentage
                   return `${value.toFixed(2)}%`;
@@ -397,6 +420,7 @@ export function DualAxisChart({
     darkMode,
     dateFormat,
     rightAxisFormatter,
+    leftAxisFormatter,
   ]);
 
   // Handle window resize
