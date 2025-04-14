@@ -36,6 +36,7 @@ interface DualAxisChartProps {
   dateFormat?: "short" | "medium" | "long"; // Controls date format style
   rightAxisFormatter?: "percentage" | "currency" | "decimal"; // Updated to include decimal
   leftAxisFormatter?: "currency" | "decimal" | "percentage"; // Add percentage option
+  emptyMessage?: string; // Add this prop for showing message when no data is available
 }
 
 export function DualAxisChart({
@@ -52,6 +53,7 @@ export function DualAxisChart({
   dateFormat = "short",
   rightAxisFormatter = "percentage", // Default to percentage format
   leftAxisFormatter = "currency", // Default to currency format
+  emptyMessage = "No data available", // Default empty message
 }: DualAxisChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -252,10 +254,74 @@ export function DualAxisChart({
             color: darkMode ? "#e0e0e0" : "#333333",
           },
         },
+        // Add dataZoom component for x-axis zooming
+        dataZoom: [
+          {
+            type: "slider",
+            xAxisIndex: 0,
+            filterMode: "filter",
+            height: 20,
+            bottom: 5, // Add some space between the zoom slider and the bottom of the chart
+            borderColor: darkMode ? "#555" : "#ddd",
+            // Add custom formatter to show only date without time
+            rangeMode: ["value", "value"],
+            labelFormatter: (value: number) => {
+              const date = new Date(value);
+              return date.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              });
+            },
+            dataBackground: {
+              lineStyle: {
+                color: darkMode
+                  ? "rgba(255, 255, 255, 0.3)"
+                  : "rgba(70, 70, 70, 0.3)",
+              },
+              areaStyle: {
+                color: darkMode
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "rgba(70, 70, 70, 0.1)",
+              },
+            },
+            handleStyle: {
+              color: darkMode ? "#888" : "#bbb",
+              borderColor: darkMode ? "#555" : "#ddd",
+            },
+            moveHandleStyle: {
+              color: darkMode ? "#ccc" : "#999",
+            },
+            selectedDataBackground: {
+              lineStyle: {
+                color: darkMode
+                  ? "rgba(255, 255, 255, 0.6)"
+                  : "rgba(70, 70, 70, 0.6)",
+              },
+              areaStyle: {
+                color: darkMode
+                  ? "rgba(255, 255, 255, 0.2)"
+                  : "rgba(70, 70, 70, 0.2)",
+              },
+            },
+            textStyle: {
+              color: darkMode ? "#e0e0e0" : "#333",
+            },
+            start: 0,
+            end: 100,
+          },
+          {
+            type: "inside",
+            xAxisIndex: 0,
+            filterMode: "filter",
+            zoomOnMouseWheel: true,
+            moveOnMouseMove: true,
+          },
+        ],
         grid: {
           left: "3%",
           right: "4%",
-          bottom: "3%",
+          bottom: "10%", // Return to the original 10% bottom margin
           containLabel: true,
         },
         xAxis: {
@@ -423,6 +489,14 @@ export function DualAxisChart({
     leftAxisFormatter,
   ]);
 
+  // Check if there's any data to display
+  const hasData =
+    series &&
+    series.length > 0 &&
+    series.some((s) => s.data && s.data.length > 0);
+
+  console.log("SERIES", series);
+
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
@@ -463,14 +537,33 @@ export function DualAxisChart({
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div
-          ref={chartRef}
-          style={{
-            width: "100%",
-            height: `${height}px`,
-          }}
-        />
+      <CardContent className="py-2">
+        {hasData ? (
+          <div
+            ref={chartRef}
+            style={{
+              width: "100%",
+              height: `${height + 30}px`,
+              position: "relative",
+              overflow: "visible",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: `${height}px`,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              color: darkMode ? "#e0e0e0" : "#666666",
+              fontSize: "16px",
+              fontStyle: "italic",
+            }}
+          >
+            {emptyMessage}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

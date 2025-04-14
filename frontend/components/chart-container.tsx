@@ -145,6 +145,7 @@ export function ChartContainer({
           />
         ) : chartType === "lstDetails" ? (
           <DualAxisChart
+            key={`lstDetails-${lstDetailsData.series?.length || 0}`} // Added dynamic key for remounting
             {...lstDetailsData}
             height={250}
             darkMode={isDarkMode}
@@ -152,6 +153,7 @@ export function ChartContainer({
             leftAxisFormatter="percentage"
             rightAxisMin={"dataMin"}
             rightAxisMax={"dataMax"}
+            emptyMessage="Either selected collateral is not an LST, or no data is available."
           />
         ) : (
           <DualAxisChart
