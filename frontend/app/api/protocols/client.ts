@@ -213,6 +213,20 @@ interface FormattedTroveManager {
   minIR: string;
   maxLiqPrice: string;
   prev7DayRedemptionTotal: number;
+  liquidationEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+  }>;
+  redemptionEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+  }>;
 }
 
 interface ChartData {
@@ -255,6 +269,24 @@ interface FormattedProtocol {
       pricesLiqsData?: ChartData;
     }
   >;
+  liquidationEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+    troveManagerIndex: number;
+    collateralSymbol: string;
+  }>;
+  redemptionEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+    troveManagerIndex: number;
+    collateralSymbol: string;
+  }>;
 }
 
 // New query function for protocols data with 10 minute cache
@@ -291,6 +323,45 @@ export const formatProtocolDataForUI = (
 
       // Create a composite id for this protocol-chain combination
       const compositeId = `${protocolId}-${chain}`;
+
+      // Arrays to store protocol-level liquidation and redemption events
+      const protocolLiquidationEvents = [];
+      const protocolRedemptionEvents = [];
+
+      // Format trove managers first to collect all events
+      const formattedTroveManagers = chainInfo.troveManagers
+        ? (Object.values(chainInfo.troveManagers)
+            .map((tm) => formatTroveManagerForUI(tm, protocolId, chain))
+            .filter(Boolean) as FormattedTroveManager[])
+        : [];
+
+      // Collect all liquidation and redemption events from trove managers
+      // and add collateral symbol information to each event
+      formattedTroveManagers.forEach((tm) => {
+        if (tm.liquidationEvents && tm.liquidationEvents.length > 0) {
+          // Add trove manager index and collateral symbol to each event
+          const liquidationEventsWithTM = tm.liquidationEvents.map((event) => ({
+            ...event,
+            troveManagerIndex: tm.index,
+            collateralSymbol: tm.collateralSymbol,
+          }));
+          protocolLiquidationEvents.push(...liquidationEventsWithTM);
+        }
+
+        if (tm.redemptionEvents && tm.redemptionEvents.length > 0) {
+          // Add trove manager index and collateral symbol to each event
+          const redemptionEventsWithTM = tm.redemptionEvents.map((event) => ({
+            ...event,
+            troveManagerIndex: tm.index,
+            collateralSymbol: tm.collateralSymbol,
+          }));
+          protocolRedemptionEvents.push(...redemptionEventsWithTM);
+        }
+      });
+
+      // Sort protocol-level events by timestamp in descending order (newest first)
+      protocolLiquidationEvents.sort((a, b) => b.timestamp - a.timestamp);
+      protocolRedemptionEvents.sort((a, b) => b.timestamp - a.timestamp);
 
       // Create formatted protocol object with only the essential data needed for the UI
       const formattedProtocol: FormattedProtocol = {
@@ -330,11 +401,9 @@ export const formatProtocolDataForUI = (
         prev7DayProtocolRedemptionTotal: prev7DayProtocolRedemptionTotal,
         iconLink: protocolInfo.iconLink || "",
         url: protocolInfo.url || "",
-        troveManagers: chainInfo.troveManagers
-          ? (Object.values(chainInfo.troveManagers)
-              .map((tm) => formatTroveManagerForUI(tm, protocolId, chain))
-              .filter(Boolean) as FormattedTroveManager[])
-          : [],
+        troveManagers: formattedTroveManagers,
+        liquidationEvents: protocolLiquidationEvents,
+        redemptionEvents: protocolRedemptionEvents,
       };
 
       // Sort troveManagers by TVL in descending order
@@ -405,6 +474,69 @@ function formatTroveManagerForUI(
     ? parseFloat(tm.prev7DayRedemptionTotal) / 1e18
     : 0;
 
+  // Process event data to extract liquidation and redemption events
+  const liquidationEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+  }> = [];
+
+  const redemptionEvents: Array<{
+    timestamp: number;
+    date: string;
+    chain: string;
+    txHash: string;
+    debtChange: number;
+  }> = [];
+
+  // Check if eventData is an array and process it
+  if (tm.eventData && Array.isArray(tm.eventData)) {
+    tm.eventData.forEach((eventEntry) => {
+      if (eventEntry.events && Array.isArray(eventEntry.events)) {
+        const timestamp = eventEntry.timestamp;
+        // Convert timestamp to date string (YYYY-MM-DD format)
+        const date = new Date(timestamp * 1000).toISOString().split("T")[0];
+
+        eventEntry.events.forEach((event) => {
+          // For liquidation events (operation = 5)
+          if (event.operation === 5) {
+            const debtChangeValue =
+              parseFloat(event.eventData?.debtChangeFromOperation || "0") /
+              1e18;
+
+            liquidationEvents.push({
+              timestamp,
+              date,
+              chain: event.chain,
+              txHash: event.txHash,
+              debtChange: debtChangeValue,
+            });
+          }
+
+          // For redemption events (operation = 6)
+          if (event.operation === 6) {
+            const debtChangeValue =
+              parseFloat(event.eventData?.debtChangeFromOperation || "0") /
+              1e18;
+
+            redemptionEvents.push({
+              timestamp,
+              date,
+              chain: event.chain,
+              txHash: event.txHash,
+              debtChange: debtChangeValue,
+            });
+          }
+        });
+      }
+    });
+  }
+
+  liquidationEvents.sort((a, b) => b.timestamp - a.timestamp);
+  redemptionEvents.sort((a, b) => b.timestamp - a.timestamp);
+
   // Only include properties needed for the UI to reduce unnecessary conversions
   return {
     id: `${protocolId}-${chain}`,
@@ -435,6 +567,8 @@ function formatTroveManagerForUI(
     minIR: tm.minIR || "",
     maxLiqPrice: tm.maxLiqPrice || "",
     prev7DayRedemptionTotal: prev7DayRedemptionTotal,
+    liquidationEvents, // Add the new sorted array
+    redemptionEvents, // Add the new sorted array
   };
 }
 
@@ -694,8 +828,6 @@ function calculatePriceData(priceDataPoints: any[]) {
 }
 
 function generateChartData(protocol: any, chain: string) {
-  console.log("PROTOCOL FOR CHART DATA:", protocol, "Chain:", chain);
-
   // Initialize series arrays for our charts
   const crDaSeries = [];
   const pricesLiqsSeries = [];

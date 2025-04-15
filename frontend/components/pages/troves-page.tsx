@@ -60,7 +60,10 @@ const CollateralCards = ({
                 <span className="font-medium">
                   $
                   {tm.currentDebtBold
-                    ? parseFloat(tm.currentDebtBold).toLocaleString()
+                    ? new Intl.NumberFormat("en-US", {
+                        notation: "compact",
+                        maximumFractionDigits: 2,
+                      }).format(parseFloat(tm.currentDebtBold))
                     : "0"}
                 </span>
               </div>

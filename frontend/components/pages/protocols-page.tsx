@@ -59,7 +59,7 @@ interface FormattedProtocolData {
 }
 
 interface ProtocolsPageProps {
-  changePeriod: string;
+  changePeriod: "none" | "1d" | "7d" | "30d";
 }
 
 export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
@@ -88,9 +88,6 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
     if (!selectedProtocolId && formattedData.length > 0) {
       const firstProtocol = formattedData[0];
       setSelectedProtocolId(firstProtocol.id);
-      console.log(
-        `Auto-selected first protocol: ${firstProtocol.id}, ${firstProtocol.name}`
-      );
     }
   }, [formattedData, selectedProtocolId]);
 
@@ -102,17 +99,11 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
     console.log("FORMATTED DATA", formattedData);
 
     if (!selectedProtocolId || !formattedData?.length) {
-      console.log("No chart data found");
       return {};
     }
 
     const selectedProtocol = formattedData.find(
       (p) => p.id === selectedProtocolId
-    );
-    console.log(
-      "Selected protocol:",
-      selectedProtocol?.id,
-      selectedProtocol?.name
     );
 
     // If a trove manager index is selected and exists in the troveManagerChartData
@@ -123,33 +114,80 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
       const troveManagerData =
         selectedProtocol.troveManagerChartData[selectedTroveManagerIndex];
       if (troveManagerData) {
-        console.log(
-          `Found chart data for trove manager index ${selectedTroveManagerIndex}:`,
-          troveManagerData
-        );
         return troveManagerData;
       } else {
-        console.log(
-          `No chart data found for trove manager index ${selectedTroveManagerIndex}, using protocol data`
-        );
       }
     }
 
     // Use protocol level data if no trove manager is selected or if trove manager data not found
     if (selectedProtocol?.chartData) {
-      console.log(
-        "Using protocol level chart data:",
-        selectedProtocol.chartData
-      );
       return selectedProtocol.chartData;
     } else {
-      console.log("No chart data found for selected protocol");
       return {};
     }
   }, [selectedProtocolId, selectedTroveManagerIndex, formattedData]);
 
-  // Log what we're passing to DashboardLayout
-  console.log("Passing to DashboardLayout:", selectedChartData);
+  // Get liquidation events for display in the table chart
+  const liquidationEventsToShow = useMemo(() => {
+    if (!selectedProtocolId || !formattedData?.length) {
+      return [];
+    }
+
+    const selectedProtocol = formattedData.find(
+      (p) => p.id === selectedProtocolId
+    );
+
+    if (!selectedProtocol) return [];
+
+    // If a trove manager is selected, show only its liquidation events
+    if (selectedTroveManagerIndex !== null) {
+      const selectedTroveManager = selectedProtocol.troveManagers.find(
+        (tm) => tm.index === selectedTroveManagerIndex
+      );
+
+      if (!selectedTroveManager) return [];
+
+      // Add the collateralSymbol to each event if it's missing
+      return selectedTroveManager.liquidationEvents.map((event) => ({
+        ...event,
+        collateralSymbol: selectedTroveManager.collateralSymbol,
+      }));
+    }
+
+    // Otherwise, show all liquidation events for the protocol
+    return selectedProtocol.liquidationEvents || [];
+  }, [selectedProtocolId, selectedTroveManagerIndex, formattedData]);
+
+  // Similar function for redemption events
+  const redemptionEventsToShow = useMemo(() => {
+    if (!selectedProtocolId || !formattedData?.length) {
+      return [];
+    }
+
+    const selectedProtocol = formattedData.find(
+      (p) => p.id === selectedProtocolId
+    );
+
+    if (!selectedProtocol) return [];
+
+    // If a trove manager is selected, show only its redemption events
+    if (selectedTroveManagerIndex !== null) {
+      const selectedTroveManager = selectedProtocol.troveManagers.find(
+        (tm) => tm.index === selectedTroveManagerIndex
+      );
+
+      if (!selectedTroveManager) return [];
+
+      // Add the collateralSymbol to each event if it's missing
+      return selectedTroveManager.redemptionEvents.map((event) => ({
+        ...event,
+        collateralSymbol: selectedTroveManager.collateralSymbol,
+      }));
+    }
+
+    // Otherwise, show all redemption events for the protocol
+    return selectedProtocol.redemptionEvents || [];
+  }, [selectedProtocolId, selectedTroveManagerIndex, formattedData]);
 
   // Handler for when a protocol is selected in the table
   const handleSelectItem = (item: any) => {
@@ -180,6 +218,8 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
         onSelectItem={handleSelectItem}
         selectedItemChartData={selectedChartData}
         selectedTroveManagerIndex={selectedTroveManagerIndex}
+        liquidationEvents={liquidationEventsToShow}
+        redemptionEvents={redemptionEventsToShow}
       />
     </div>
   );

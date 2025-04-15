@@ -14,22 +14,31 @@ import { PlusCircle } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme } from "next-themes";
+import React from "react";
 
 // Define the Chart type
 export type ChartConfig = {
   id: string;
-  type: "cr" | "crDa" | "pricesLiqs" | "lstDetails";
+  type:
+    | "crDa"
+    | "pricesLiqs"
+    | "lstDetails"
+    | "liquidationEvents"
+    | "redemptionEvents";
 };
 
-interface DashboardLayoutProps {
+// Update the interface to include new props
+export interface DashboardLayoutProps {
   data: any[];
-  customChartPanel?: ReactNode;
+  customChartPanel?: React.ReactNode;
   disableChartControls?: boolean;
   customTitle?: string;
-  changePeriod?: string;
+  changePeriod?: "none" | "1d" | "7d" | "30d";
   onSelectItem?: (item: any) => void;
   selectedItemChartData?: any;
-  selectedTroveManagerIndex?: number | null; // Add this new prop
+  selectedTroveManagerIndex?: number | null;
+  liquidationEvents?: Array<any>; // New prop for displaying liquidation events
+  redemptionEvents?: Array<any>; // New prop for displaying redemption events
 }
 
 export function DashboardLayout({
@@ -41,11 +50,14 @@ export function DashboardLayout({
   onSelectItem,
   selectedItemChartData,
   selectedTroveManagerIndex = null, // Add this parameter with default value
+  liquidationEvents = [], // Add default value
+  redemptionEvents = [], // Add default value
 }: DashboardLayoutProps) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [charts, setCharts] = useState<ChartConfig[]>([]);
   const [dataType, setDataType] = useState<"protocols" | "troves">("protocols");
+  const [selectedTab, setSelectedTab] = useState("overview");
 
   // Track previous value of selectedTroveManagerIndex to detect changes
   const [prevTroveManagerIndex, setPrevTroveManagerIndex] = useState<
@@ -151,12 +163,17 @@ export function DashboardLayout({
   }, []);
 
   const updateChartType = useCallback(
-    (id: string, type: "cr" | "crDa" | "pricesLiqs" | "lstDetails") => {
-      // Only allow updating to CR if a trove manager is selected
-      if (
-        (type === "cr" || type === "lstDetails") &&
-        selectedTroveManagerIndex === null
-      ) {
+    (
+      id: string,
+      type:
+        | "crDa"
+        | "pricesLiqs"
+        | "lstDetails"
+        | "liquidationEvents"
+        | "redemptionEvents"
+    ) => {
+      // Only allow updating to lstDetails if a trove manager is selected
+      if (type === "lstDetails" && selectedTroveManagerIndex === null) {
         return;
       }
 
@@ -263,6 +280,8 @@ export function DashboardLayout({
                 onChangeType={(type) => updateChartType(chart.id, type)}
                 onRemove={() => removeChart(chart.id)}
                 selectedTroveManagerIndex={selectedTroveManagerIndex}
+                liquidationEvents={liquidationEvents}
+                redemptionEvents={redemptionEvents}
               />
             );
           })
@@ -270,6 +289,11 @@ export function DashboardLayout({
       </div>
     );
   };
+
+  // Determine if we should show event charts based on available data
+  const showLiquidationsChart =
+    liquidationEvents && liquidationEvents.length > 0;
+  const showRedemptionsChart = redemptionEvents && redemptionEvents.length > 0;
 
   return (
     <div className="flex w-full min-h-svh">

@@ -10,29 +10,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, PieChart, LineChart, BarChart } from "lucide-react";
+import {
+  X,
+  PieChart,
+  LineChart,
+  BarChart,
+  Table as TableIcon,
+} from "lucide-react";
 import { CrPieChart } from "./cr-pie-chart";
 import { DualAxisChart } from "./dual-axis-chart";
 import { useTheme } from "next-themes";
+import { TableChart } from "./table-chart";
 
 interface ChartContainerProps {
   chartId: string;
-  chartType: "cr" | "crDa" | "pricesLiqs" | "lstDetails";
+  chartType:
+    | "crDa"
+    | "pricesLiqs"
+    | "lstDetails"
+    | "liquidationEvents"
+    | "redemptionEvents";
   data: any[];
   monthlyData: any[];
   dataType: "protocols" | "troves";
   chartData?: any;
-  onChangeType: (type: "cr" | "crDa" | "pricesLiqs" | "lstDetails") => void;
+  onChangeType: (
+    type:
+      | "crDa"
+      | "pricesLiqs"
+      | "lstDetails"
+      | "liquidationEvents"
+      | "redemptionEvents"
+  ) => void;
   onRemove: () => void;
   selectedTroveManagerIndex: number | null;
+  liquidationEvents?: Array<any>; // Add prop for liquidation events
+  redemptionEvents?: Array<any>; // Add prop for redemption events
 }
 
 // Chart type options
 const chartTypes = [
-  { value: "cr", label: "CR Chart", icon: PieChart },
   { value: "crDa", label: "CR/TVL", icon: BarChart },
   { value: "pricesLiqs", label: "Prices/Liqs", icon: LineChart },
   { value: "lstDetails", label: "LST Details", icon: LineChart },
+  { value: "liquidationEvents", label: "Liquidations", icon: TableIcon },
+  { value: "redemptionEvents", label: "Redemptions", icon: TableIcon },
 ];
 
 // Chart titles by type and data type
@@ -40,12 +62,16 @@ const chartTitles = {
   protocols: {
     crDa: "CR/TVL",
     pricesLiqs: "Prices & Liquidations",
+    liquidationEvents: "Liquidation Events",
+    redemptionEvents: "Redemption Events",
+    lstDetails: "LST Details",
   },
   troves: {
-    cr: "Trove CR History",
     crDa: "CR/TVL",
     pricesLiqs: "Prices & Liquidations",
     lstDetails: "LST Details",
+    liquidationEvents: "Liquidation Events",
+    redemptionEvents: "Redemption Events",
   },
 };
 
@@ -59,6 +85,8 @@ export function ChartContainer({
   onChangeType,
   onRemove,
   selectedTroveManagerIndex,
+  liquidationEvents = [], // Default to empty array
+  redemptionEvents = [], // Default to empty array
 }: ChartContainerProps) {
   const [isHovering, setIsHovering] = useState(false);
   const { theme } = useTheme();
@@ -77,12 +105,7 @@ export function ChartContainer({
   const availableChartTypes =
     selectedTroveManagerIndex !== null
       ? chartTypes
-      : chartTypes.filter(
-          (type) =>
-            type.value !== "cr" &&
-            type.value !== "pricesLiqs" &&
-            type.value !== "lstDetails"
-        );
+      : chartTypes.filter((type) => type.value !== "lstDetails");
 
   const ChartIcon =
     chartTypes.find((type) => type.value === chartType)?.icon || BarChart;
@@ -104,9 +127,15 @@ export function ChartContainer({
           <Select
             value={chartType}
             onValueChange={(value) =>
-              onChangeType(value as "cr" | "crDa" | "pricesLiqs" | "lstDetails")
+              onChangeType(
+                value as
+                  | "crDa"
+                  | "pricesLiqs"
+                  | "lstDetails"
+                  | "liquidationEvents"
+                  | "redemptionEvents"
+              )
             }
-            disabled={chartType === "cr" && selectedTroveManagerIndex === null}
           >
             <SelectTrigger className="w-[140px] h-8">
               <SelectValue placeholder="Select chart type" />
@@ -133,9 +162,7 @@ export function ChartContainer({
         </div>
       </CardHeader>
       <CardContent className="py-2">
-        {chartType === "cr" ? (
-          <CrPieChart data={crHistory} height={250} />
-        ) : chartType === "pricesLiqs" ? (
+        {chartType === "pricesLiqs" ? (
           <DualAxisChart
             {...pricesLiqsData}
             height={250}
@@ -154,6 +181,20 @@ export function ChartContainer({
             rightAxisMin={"dataMin"}
             rightAxisMax={"dataMax"}
             emptyMessage="Either selected collateral is not an LST, or no data is available."
+          />
+        ) : chartType === "liquidationEvents" ? (
+          <TableChart
+            dataType="liquidations"
+            eventsData={liquidationEvents}
+            height={250}
+            darkMode={isDarkMode}
+          />
+        ) : chartType === "redemptionEvents" ? (
+          <TableChart
+            dataType="redemptions"
+            eventsData={redemptionEvents}
+            height={250}
+            darkMode={isDarkMode}
           />
         ) : (
           <DualAxisChart
