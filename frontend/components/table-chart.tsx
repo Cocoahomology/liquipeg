@@ -18,6 +18,7 @@ import {
 } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getBlockExplorerForTx } from "~/utils/blockExplorers";
 
 interface TableChartProps {
   dataType: "protocols" | "troves" | "liquidations" | "redemptions";
@@ -87,11 +88,23 @@ export function TableChart({
           header: "Hash",
           cell: ({ row }) => {
             const txHash = row.getValue("txHash") as string;
+            const chain = row.original.chain || "ethereum";
+            const formattedTxHash = `${chain}:${txHash}`;
+            const { blockExplorerLink } =
+              getBlockExplorerForTx(formattedTxHash);
+
             return (
               <div className="font-mono text-xs truncate">
-                {`${txHash.substring(0, 6)}...${txHash.substring(
-                  txHash.length - 4
-                )}`}
+                <a
+                  href={blockExplorerLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 hover:text-blue-700 hover:underline"
+                >
+                  {`${txHash.substring(0, 6)}...${txHash.substring(
+                    txHash.length - 4
+                  )}`}
+                </a>
               </div>
             );
           },
@@ -136,11 +149,23 @@ export function TableChart({
           header: "Hash",
           cell: ({ row }) => {
             const txHash = row.getValue("txHash") as string;
+            const chain = row.original.chain || "ethereum"; // Get chain from event data or default to ethereum
+            const formattedTxHash = `${chain}:${txHash}`;
+            const { blockExplorerLink } =
+              getBlockExplorerForTx(formattedTxHash);
+
             return (
               <div className="font-mono text-xs truncate">
-                {`${txHash.substring(0, 6)}...${txHash.substring(
-                  txHash.length - 4
-                )}`}
+                <a
+                  href={blockExplorerLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 hover:text-blue-700 hover:underline"
+                >
+                  {`${txHash.substring(0, 6)}...${txHash.substring(
+                    txHash.length - 4
+                  )}`}
+                </a>
               </div>
             );
           },

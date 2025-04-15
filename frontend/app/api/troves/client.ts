@@ -40,6 +40,7 @@ interface FormattedTroveData {
   accrued_interest: string;
   colRatio?: number; // Converted to percentage
   debtInFront?: number; // Converted to human-readable format (divided by 1e18)
+  chain: string; // Add the chain to each trove
 }
 
 interface FormattedTroveManager {
@@ -106,6 +107,7 @@ export const formatTroveDataForUI = (data: any): FormattedProtocolData => {
             ? [...tm.troveData]
                 .map((trove) => ({
                   ...trove,
+                  chain: chainName, // Add the chain to each trove
                   annualInterestRate:
                     parseFloat(trove.annualInterestRate || "0") / 1e16, // Convert to percentage
                   entire_debt: parseFloat(trove.entire_debt || "0") / 1e18, // Convert to human-readable format

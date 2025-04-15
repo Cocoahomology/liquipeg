@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getBlockExplorerForAddress } from "~/utils/blockExplorers";
 
 // Define thresholds for different metrics
 const thresholds = {
@@ -620,11 +621,24 @@ export function ExpandableTable({
         header: "Owner",
         cell: ({ row }) => {
           const address = row.getValue("owner") as string;
+          const chain = row.original.chain || "ethereum"; // Get the chain from the trove data
+          const formattedAddress = `${chain}:${address}`;
+          const { blockExplorerLink } =
+            getBlockExplorerForAddress(formattedAddress);
+
           return (
-            <div className="font-mono text-xs">{`${address.substring(
-              0,
-              4
-            )}...${address.substring(address.length - 3)}`}</div>
+            <div className="font-mono text-xs truncate">
+              <a
+                href={blockExplorerLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-700 hover:underline"
+              >
+                {`${address.substring(0, 4)}...${address.substring(
+                  address.length - 3
+                )}`}
+              </a>
+            </div>
           );
         },
       },
@@ -1030,7 +1044,6 @@ export function ExpandableTable({
                                 changePeriod={changePeriod}
                               />
                             )}
-
                           {dataType === "protocols" &&
                             typeof row.original === "object" &&
                             row.original !== null &&
