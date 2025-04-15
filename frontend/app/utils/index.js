@@ -354,6 +354,68 @@ export const capitalizeFirstLetter = (word) =>
 export const slug = (name = "") =>
   name?.toLowerCase().split(" ").join("-").split("'").join("");
 
+/**
+ * Returns a color from a predefined palette based on index
+ * @param {number} index - The index to get color for
+ * @param {string} type - Optional color type: 'main' (default) or 'accent'
+ * @returns {string} Hex color code
+ */
+export function getColorForIndex(index, type = "main") {
+  // Main palette with 20 distinct colors - avoiding bright colors like red, yellow, and pink
+  const mainColors = [
+    "#60a5fa", // Blue
+    "#4ade80", // Green
+    "#8b5cf6", // Purple
+    "#3b82f6", // Blue (slightly darker)
+    "#34d399", // Emerald
+    "#818cf8", // Indigo
+    "#38bdf8", // Sky Blue
+    "#6366f1", // Indigo
+    "#c084fc", // Fuchsia
+    "#d946ef", // Magenta
+    "#2dd4bf", // Teal
+    "#94a3b8", // Slate
+    "#64748b", // Slate (darker)
+    "#10b981", // Emerald (darker)
+    "#0ea5e9", // Sky (darker)
+    "#8b5cf6", // Violet
+    "#6d28d9", // Purple (darker)
+    "#059669", // Emerald (much darker)
+    "#0369a1", // Blue (much darker)
+    "#4f46e5", // Indigo (darker)
+  ];
+
+  // Accent palette with 20 distinct colors - avoiding bright colors
+  const accentColors = [
+    "#3b82f6", // Blue accent
+    "#22c55e", // Green accent
+    "#8b5cf6", // Purple accent
+    "#0891b2", // Cyan accent
+    "#10b981", // Emerald accent
+    "#6366f1", // Indigo accent
+    "#14b8a6", // Teal accent
+    "#0ea5e9", // Sky Blue accent
+    "#a855f7", // Fuchsia accent
+    "#c026d3", // Magenta accent
+    "#6b7280", // Gray accent
+    "#64748b", // Slate accent
+    "#4f46e5", // Indigo darker accent
+    "#059669", // Emerald darker accent
+    "#7c3aed", // Violet accent
+    "#2563eb", // Blue (deeper)
+    "#0d9488", // Teal (deeper)
+    "#4338ca", // Indigo (deeper)
+    "#5b21b6", // Purple (deeper)
+    "#1e40af", // Blue (much deeper)
+  ];
+
+  // Select the appropriate color palette
+  const colors = type === "accent" ? accentColors : mainColors;
+
+  // Return a color from the array, wrapping around if needed
+  return colors[Math.abs(index) % colors.length];
+}
+
 export function getRandomColor() {
   var letters = "0123456789ABCDEF";
   var color = "#";

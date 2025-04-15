@@ -1,6 +1,7 @@
 import { fetchApi } from "~/utils/async";
 import { getProtocolsOverviewPageData } from ".";
 import { useQuery } from "@tanstack/react-query";
+import { getColorForIndex } from "~/utils";
 
 // Define types for the input data structure
 interface ColImmutables {
@@ -586,24 +587,6 @@ function findClosestPricePoint(timestamp: number, priceDataPoints: any[]) {
   return sortedPoints[0];
 }
 
-// Helper function to get a color based on index
-function getColorForIndex(index: number) {
-  // Array of colors to use for different trove managers
-  const colors = [
-    "#f87171", // Red
-    "#60a5fa", // Blue
-    "#4ade80", // Green
-    "#facc15", // Yellow
-    "#a78bfa", // Purple
-    "#fb923c", // Orange
-    "#34d399", // Emerald
-    "#f472b6", // Pink
-  ];
-
-  // Return a color from the array, wrapping around if needed
-  return colors[index % colors.length];
-}
-
 // Helper function to calculate TVL and ratio data for charts
 function calculateTvlAndRatioData(
   poolDataPoints: any[],
@@ -865,8 +848,12 @@ function generateChartData(protocol: any, chain: string) {
         isLST
       );
 
-      // Get a fixed color for this trove manager
+      // Get a fixed color for this trove manager using the imported utility
       const color = getColorForIndex(parseInt(troveManagerIndex));
+      const colorAccent = getColorForIndex(
+        parseInt(troveManagerIndex),
+        "accent"
+      );
 
       // Add this trove manager's TVL data as a series (if we have data)
       if (tvlData.length > 0) {
@@ -889,7 +876,7 @@ function generateChartData(protocol: any, chain: string) {
             name: `${symbol || "?"}`,
             type: "line",
             data: ratioData,
-            color: color,
+            color: colorAccent,
             yAxisIndex: 1, // Use right axis for ratio
           })
         );
@@ -904,11 +891,12 @@ function generateChartData(protocol: any, chain: string) {
         if (oraclePriceData.length > 0) {
           pricesLiqsSeries.push(
             createChartSeries({
-              name: "Oracle Price",
+              name: `${symbol} Oracle Price`,
               type: "line",
               data: oraclePriceData,
-              color: "#60a5fa", // Blue color for oracle price
+              color: color,
               yAxisIndex: 1, // Use right axis for price
+              showInLegend: false,
             })
           );
         }
@@ -917,11 +905,12 @@ function generateChartData(protocol: any, chain: string) {
         if (priceFeedData.length > 0) {
           pricesLiqsSeries.push(
             createChartSeries({
-              name: "SC Price",
+              name: `${symbol} SC Price`,
               type: "line",
               data: priceFeedData,
-              color: "#4ade80", // Green color for SC price
+              color: colorAccent,
               yAxisIndex: 1, // Use right axis for price
+              showInLegend: false,
             })
           );
         }
@@ -1021,7 +1010,11 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
         isLST
       );
 
-      const color = getColorForIndex(parseInt(troveManagerIndex));
+      const color1 = getColorForIndex(parseInt(troveManagerIndex));
+      const color1Accent = getColorForIndex(
+        parseInt(troveManagerIndex),
+        "accent"
+      );
       const color2 = getColorForIndex(parseInt(troveManagerIndex) + 1);
       const color3 = getColorForIndex(parseInt(troveManagerIndex) + 2);
 
@@ -1036,7 +1029,7 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
             name: `${symbol || "?"}`,
             type: "line",
             data: tvlData,
-            color: color,
+            color: color1,
             yAxisIndex: 0, // Use left axis (USD) for TVL
             showInLegend: false,
           })
@@ -1050,7 +1043,7 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
             name: `${symbol || "?"}`,
             type: "line",
             data: ratioData,
-            color: color,
+            color: color1Accent,
             yAxisIndex: 1, // Use right axis for ratio
           })
         );
@@ -1062,7 +1055,7 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
             name: `Market Rate`,
             type: "line",
             data: lstMarketRateData,
-            color: color,
+            color: color1,
             yAxisIndex: 1,
           })
         );
@@ -1107,7 +1100,7 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
         if (oraclePriceData.length > 0) {
           pricesLiqsSeries.push(
             createChartSeries({
-              name: "Oracle Price",
+              name: `${symbol} Oracle Price`, // Include symbol in series name
               type: "line",
               data: oraclePriceData,
               color: "#60a5fa", // Blue color for oracle price
@@ -1120,7 +1113,7 @@ function generateTroveManagerChartData(protocol: any, chain: string) {
         if (priceFeedData.length > 0) {
           pricesLiqsSeries.push(
             createChartSeries({
-              name: "SC Price",
+              name: `${symbol} SC Price`, // Include symbol in series name
               type: "line",
               data: priceFeedData,
               color: "#4ade80", // Green color for SC price

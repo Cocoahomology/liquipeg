@@ -10,14 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  X,
-  PieChart,
-  LineChart,
-  BarChart,
-  Table as TableIcon,
-} from "lucide-react";
-import { CrPieChart } from "./cr-pie-chart";
+import { X, LineChart, BarChart, Table as TableIcon } from "lucide-react";
 import { DualAxisChart } from "./dual-axis-chart";
 import { useTheme } from "next-themes";
 import { TableChart } from "./table-chart";
