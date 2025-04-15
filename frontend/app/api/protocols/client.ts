@@ -269,7 +269,8 @@ export const useGetProtocolsOverviewData = () => {
 
 // Helper function to format protocol data for the UI
 export const formatProtocolDataForUI = (
-  data: RawProtocolsData
+  data: RawProtocolsData,
+  selectedProtocolId?: string | null
 ): FormattedProtocol[] => {
   if (!data) return [];
 
@@ -288,9 +289,12 @@ export const formatProtocolDataForUI = (
           ? parseFloat(chainInfo.prev7DayProtocolRedemptionTotal) / 1e18
           : 0;
 
+      // Create a composite id for this protocol-chain combination
+      const compositeId = `${protocolId}-${chain}`;
+
       // Create formatted protocol object with only the essential data needed for the UI
       const formattedProtocol: FormattedProtocol = {
-        id: `${protocolId}-${chain}`,
+        id: compositeId,
         name: protocolInfo.displayName || protocolInfo.name,
         displayName: protocolInfo.name,
         chain: chain,
@@ -345,9 +349,14 @@ export const formatProtocolDataForUI = (
     });
   });
 
+  // Now add chart data only for the selected protocol (if specified)
   return formatted.map((protocol) => {
     // Extract protocol ID and chain from the compound ID (format: "id-chain")
     const [protocolId, chain] = protocol.id.split("-");
+
+    // Only add chart data if this is the selected protocol or no selection has been made
+    const shouldGenerateChartData =
+      !selectedProtocolId || protocol.id === selectedProtocolId;
 
     // Check if protocolsData is an array or an object with keys
     const rawProtocol = Array.isArray(data)
@@ -356,12 +365,15 @@ export const formatProtocolDataForUI = (
 
     return {
       ...protocol,
-      chartData: rawProtocol
-        ? generateChartData(rawProtocol, chain)
-        : undefined,
-      troveManagerChartData: rawProtocol
-        ? generateTroveManagerChartData(rawProtocol, chain)
-        : undefined,
+      // Only generate chart data for the selected protocol to save memory
+      chartData:
+        shouldGenerateChartData && rawProtocol
+          ? generateChartData(rawProtocol, chain)
+          : undefined,
+      troveManagerChartData:
+        shouldGenerateChartData && rawProtocol
+          ? generateTroveManagerChartData(rawProtocol, chain)
+          : undefined,
     };
   });
 };

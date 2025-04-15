@@ -80,8 +80,8 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
   const formattedData = useMemo(() => {
     if (!protocolsData) return [];
 
-    return formatProtocolDataForUI(protocolsData as any);
-  }, [protocolsData]);
+    return formatProtocolDataForUI(protocolsData as any, selectedProtocolId);
+  }, [protocolsData, selectedProtocolId]);
 
   // Auto-select the first protocol when data is loaded
   useEffect(() => {
