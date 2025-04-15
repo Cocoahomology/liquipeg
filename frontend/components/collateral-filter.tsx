@@ -21,9 +21,16 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
+interface CollateralItem {
+  id: string; // Composite key as string (chain:troveManagerIndex)
+  chain: string;
+  troveManagerIndex: number;
+  name: string;
+}
+
 interface CollateralFilterProps {
-  collaterals: string[];
-  selectedCollaterals: string[];
+  collaterals: CollateralItem[];
+  selectedCollaterals: string[]; // Array of composite keys
   onSelectionChange: (selectedCollaterals: string[]) => void;
   className?: string;
 }
@@ -38,20 +45,27 @@ export function CollateralFilter({
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const filteredCollaterals = collaterals.filter((collateral) =>
-    collateral.toLowerCase().includes(searchQuery.toLowerCase())
+    collateral.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const toggleCollateral = (collateral: string) => {
-    if (selectedCollaterals.includes(collateral)) {
-      onSelectionChange(selectedCollaterals.filter((c) => c !== collateral));
+  const toggleCollateral = (collateralId: string) => {
+    if (selectedCollaterals.includes(collateralId)) {
+      onSelectionChange(
+        selectedCollaterals.filter((id) => id !== collateralId)
+      );
     } else {
-      onSelectionChange([...selectedCollaterals, collateral]);
+      onSelectionChange([...selectedCollaterals, collateralId]);
     }
   };
 
   const clearAll = () => {
     onSelectionChange([]);
   };
+
+  // Get display names of selected collaterals for UI
+  const selectedCollateralNames = collaterals
+    .filter((item) => selectedCollaterals.includes(item.id))
+    .map((item) => item.name);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -119,22 +133,25 @@ export function CollateralFilter({
               <div className="space-y-1 p-1">
                 {filteredCollaterals.map((collateral) => (
                   <div
-                    key={collateral}
+                    key={collateral.id}
                     className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer"
-                    onClick={() => toggleCollateral(collateral)}
+                    onClick={() => toggleCollateral(collateral.id)}
                   >
                     <div
                       className="w-4 h-4 border border-primary rounded-sm flex items-center justify-center"
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleCollateral(collateral);
+                        toggleCollateral(collateral.id);
                       }}
                     >
-                      {selectedCollaterals.includes(collateral) && (
+                      {selectedCollaterals.includes(collateral.id) && (
                         <div className="w-2 h-2 bg-primary rounded-sm" />
                       )}
                     </div>
-                    <span className="flex-1">{collateral}</span>
+                    <span className="flex-1">{collateral.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {collateral.chain}
+                    </span>
                   </div>
                 ))}
               </div>

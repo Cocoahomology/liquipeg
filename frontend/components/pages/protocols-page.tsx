@@ -80,7 +80,7 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
   const formattedData = useMemo(() => {
     if (!protocolsData) return [];
 
-    return formatProtocolDataForUI(protocolsData);
+    return formatProtocolDataForUI(protocolsData as any);
   }, [protocolsData]);
 
   // Auto-select the first protocol when data is loaded
@@ -96,18 +96,14 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
 
   // Get chart data for selected protocol or trove manager
   const selectedChartData = useMemo(() => {
-    // Always provide default data if nothing is selected
-    const defaultChartData = {
-      tvlHistory: [10000000, 12000000, 15000000, 13000000, 16000000, 20000000],
-    };
-
     console.log("selectedProtocolId:", selectedProtocolId);
     console.log("selectedTroveManagerIndex:", selectedTroveManagerIndex);
     console.log("formattedData length:", formattedData?.length);
+    console.log("FORMATTED DATA", formattedData);
 
     if (!selectedProtocolId || !formattedData?.length) {
-      console.log("Using default chart data");
-      return defaultChartData;
+      console.log("No chart data found");
+      return {};
     }
 
     const selectedProtocol = formattedData.find(
@@ -147,8 +143,8 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
       );
       return selectedProtocol.chartData;
     } else {
-      console.log("No chart data found for selected protocol, using default");
-      return defaultChartData;
+      console.log("No chart data found for selected protocol");
+      return {};
     }
   }, [selectedProtocolId, selectedTroveManagerIndex, formattedData]);
 
@@ -179,7 +175,7 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
       <div className="mb-4"></div>
       <DashboardLayout
         data={formattedData}
-        customTitle="Protocol Analytics"
+        customTitle="Analytics"
         changePeriod={changePeriod}
         onSelectItem={handleSelectItem}
         selectedItemChartData={selectedChartData}

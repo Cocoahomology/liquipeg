@@ -2,6 +2,261 @@ import { fetchApi } from "~/utils/async";
 import { getProtocolsOverviewPageData } from ".";
 import { useQuery } from "@tanstack/react-query";
 
+// Define types for the input data structure
+interface ColImmutables {
+  CCR: string;
+  SCR: string;
+  MCR: string;
+  troveManager: string;
+  collToken: string;
+  collTokenSymbol: string;
+  collTokenDecimals: string;
+  activePool: string;
+  defaultPool: string;
+  stabilityPool: string;
+  borrowerOperationsAddress: string;
+  sortedTroves: string;
+  troveNFT: string;
+  priceFeed: string;
+  isLST: boolean | null;
+  LSTunderlying: string | null;
+  collAlternativeChainAddresses: string[] | null;
+}
+
+interface TroveData {
+  troveId: string;
+  arrayIndex: number;
+  lastDebtUpdateTime: string;
+  lastInterestRateAdjTime: string;
+  annualInterestRate: string;
+  interestBatchManager: string;
+  batchDebtShares: string;
+  ownerAddress: string;
+  debt: string;
+  coll: string;
+  stake: string;
+  status: number;
+  entire_debt: string;
+  accrued_interest: string;
+}
+
+interface PoolDataPoint {
+  date: string;
+  timestamp: number;
+  blockNumber: number;
+  getEntireSystemColl: string;
+  getEntireSystemDebt: string;
+  getTroveIdsCount: string;
+  aggWeightedRecordedDebtSum: string;
+  aggRecordedDebt: string;
+  calcPendingAggInterest: string;
+  calcPendingSPYield: string;
+  lastAggUpdateTime: string;
+  getCollBalanceActivePool: string;
+  getCollBalanceDefaultPool: string;
+  getCollBalanceStabilityPool: string;
+  getTotalBoldDeposits: string;
+  getYieldGainsOwed: string;
+  getYieldGainsPending: string;
+  [key: string]: any;
+}
+
+interface PriceDataPoint {
+  date: string;
+  timestamp: number;
+  blockNumber: number;
+  colUSDPriceFeed: string;
+  colUSDOracle: string;
+  LSTUnderlyingCanonicalRate?: string;
+  LSTUnderlyingMarketRate?: string;
+  underlyingUSDOracle?: string;
+  deviation?: string;
+  redemptionRelatedOracles?: Record<string, number>;
+  [key: string]: any;
+}
+
+interface EventData {
+  blockNumber: number;
+  timestamp: number;
+  events: Array<{
+    chain: string;
+    protocolId: number;
+    txHash: string;
+    troveManagerIndex: number;
+    operation: number;
+    eventName: string;
+    eventData: {
+      troveId: string;
+      operation: string;
+      annualInterestRate: string;
+      collIncreaseFromRedist: string;
+      debtIncreaseFromRedist: string;
+      collChangeFromOperation: string;
+      debtChangeFromOperation: string;
+      debtIncreaseFromUpfrontFee: string;
+    };
+  }>;
+}
+
+interface TroveManager {
+  troveManagerIndex: number;
+  poolDataPoints: PoolDataPoint[];
+  priceDataPoints: PriceDataPoint[];
+  colImmutables: ColImmutables;
+  troveData: TroveData[];
+  eventData: EventData[];
+  prev7DayRedemptionTotal?: string;
+  currentDebtBold?: string;
+  currentColUSD?: string;
+  currentSpBold?: string;
+  currentSpColUsd?: string;
+  colRatio?: string;
+  currentColUSDOracle?: string;
+  currentColUSDPriceFeed?: string;
+  prevDayDebtBold?: string;
+  prevDayColUSD?: string;
+  prevDaySpBold?: string;
+  prevDaySpColUsd?: string;
+  prevDayColRatio?: string;
+  prev7DayDebtBold?: string;
+  prev7DayColUSD?: string;
+  prev7DaySpBold?: string;
+  prev7DaySpColUsd?: string;
+  prev7DayColRatio?: string;
+  prevDayColUSDOracle?: string;
+  prev7DayColUSDOracle?: string;
+  tvlChange1d?: number;
+  tvlChange7d?: number;
+  collateralRatioChange1d?: number;
+  collateralRatioChange7d?: number;
+  colUSDOracleChange1d?: number;
+  colUSDOracleChange7d?: number;
+  avgIR?: string;
+  minIR?: string;
+  maxLiqPrice?: string;
+}
+
+interface ChainData {
+  troveManagers: Record<string, TroveManager>;
+  prevDayProtocolTvl?: string | null;
+  prevDayProtocolColRatio?: string | null;
+  prevDayProtocolDebtBold?: string | null;
+  prevDayProtocolSpTvl?: string | null;
+  prev7DayProtocolTvl?: string | null;
+  prev7DayProtocolColRatio?: string | null;
+  prev7DayProtocolDebtBold?: string | null;
+  prev7DayProtocolSpTvl?: string | null;
+  prev7DayProtocolRedemptionTotal?: string;
+  tvlChange1d?: number | null;
+  colRatioChange1d?: number | null;
+  debtBoldChange1d?: number | null;
+  spTvlChange1d?: number | null;
+  tvlChange7d?: number | null;
+  colRatioChange7d?: number | null;
+  debtBoldChange7d?: number | null;
+  spTvlChange7d?: number | null;
+  currentProtocolTvl?: string;
+  currentProtocolColRatio?: string | null;
+  currentProtocolDebtBold?: string;
+  currentProtocolSpTvl?: string;
+}
+
+interface ProtocolInfo {
+  protocolId: number;
+  name: string;
+  chains: string[];
+  immutables: Record<
+    string,
+    {
+      boldToken: string;
+      collateralRegistry: string;
+      interestRouter: string;
+    }
+  >;
+  displayName: string;
+  iconLink: string;
+  url: string;
+}
+
+interface ProtocolData {
+  protocolInfo: ProtocolInfo;
+  chainData: Record<string, ChainData>;
+}
+
+interface RawProtocolsData {
+  [protocolId: string]: ProtocolData;
+}
+
+// Define the output types for clarity
+interface FormattedTroveManager {
+  id: string;
+  index: number;
+  collateralSymbol: string;
+  tvl: number;
+  prevDayTvl: number | null;
+  prev7DayTvl: number | null;
+  tvlChange1d: number | null;
+  tvlChange7d: number | null;
+  collateralRatio: number;
+  prevDayCollateralRatio: number | null;
+  prev7DayCollateralRatio: number | null;
+  collateralRatioChange1d: number | null;
+  collateralRatioChange7d: number | null;
+  ratioSettings: string;
+  ccr: number;
+  currentColUSDOracle: string;
+  prevDayColUSDOracle: string | null;
+  prev7DayColUSDOracle: string | null;
+  colUSDOracleChange1d: number | null;
+  colUSDOracleChange7d: number | null;
+  avgIR: string;
+  minIR: string;
+  maxLiqPrice: string;
+  prev7DayRedemptionTotal: number;
+}
+
+interface ChartData {
+  title: string;
+  series: any[];
+  leftAxisName: string;
+  rightAxisName: string;
+}
+
+interface FormattedProtocol {
+  id: string;
+  name: string;
+  displayName: string;
+  chain: string;
+  tvl: number;
+  tvlChange1d: number | null;
+  tvlChange7d: number | null;
+  collateralRatio: number;
+  collateralRatioChange1d: number | null;
+  collateralRatioChange7d: number | null;
+  stableDebt: number;
+  stableDebtChange1d: number | null;
+  stableDebtChange7d: number | null;
+  spTvl: number;
+  spTvlChange1d: number | null;
+  spTvlChange7d: number | null;
+  prev7DayProtocolRedemptionTotal: number;
+  iconLink: string;
+  url: string;
+  troveManagers: FormattedTroveManager[];
+  chartData?: {
+    crDaData: ChartData;
+    pricesLiqsData: ChartData;
+  };
+  troveManagerChartData?: Record<
+    string,
+    {
+      crDaData?: ChartData;
+      lstDetailsData?: ChartData;
+      pricesLiqsData?: ChartData;
+    }
+  >;
+}
+
 // New query function for protocols data with 10 minute cache
 export const useGetProtocolsOverviewData = () => {
   return useQuery({
@@ -13,10 +268,12 @@ export const useGetProtocolsOverviewData = () => {
 };
 
 // Helper function to format protocol data for the UI
-export const formatProtocolDataForUI = (data) => {
+export const formatProtocolDataForUI = (
+  data: RawProtocolsData
+): FormattedProtocol[] => {
   if (!data) return [];
 
-  const formatted = [];
+  const formatted: FormattedProtocol[] = [];
 
   Object.keys(data).forEach((protocolId) => {
     const protocol = data[protocolId];
@@ -32,48 +289,48 @@ export const formatProtocolDataForUI = (data) => {
           : 0;
 
       // Create formatted protocol object with only the essential data needed for the UI
-      const formattedProtocol = {
+      const formattedProtocol: FormattedProtocol = {
         id: `${protocolId}-${chain}`,
         name: protocolInfo.displayName || protocolInfo.name,
         displayName: protocolInfo.name,
         chain: chain,
         tvl: parseFloat(chainInfo.currentProtocolTvl || "0"),
         tvlChange1d: chainInfo.tvlChange1d
-          ? parseFloat(chainInfo.tvlChange1d)
+          ? parseFloat(String(chainInfo.tvlChange1d))
           : null,
         tvlChange7d: chainInfo.tvlChange7d
-          ? parseFloat(chainInfo.tvlChange7d)
+          ? parseFloat(String(chainInfo.tvlChange7d))
           : null,
         collateralRatio:
           parseFloat(chainInfo.currentProtocolColRatio || "0") * 100,
         collateralRatioChange1d: chainInfo.colRatioChange1d
-          ? parseFloat(chainInfo.colRatioChange1d)
+          ? parseFloat(String(chainInfo.colRatioChange1d))
           : null,
         collateralRatioChange7d: chainInfo.colRatioChange7d
-          ? parseFloat(chainInfo.colRatioChange7d)
+          ? parseFloat(String(chainInfo.colRatioChange7d))
           : null,
         stableDebt: parseFloat(chainInfo.currentProtocolDebtBold || "0"),
         stableDebtChange1d: chainInfo.debtBoldChange1d
-          ? parseFloat(chainInfo.debtBoldChange1d)
+          ? parseFloat(String(chainInfo.debtBoldChange1d))
           : null,
         stableDebtChange7d: chainInfo.debtBoldChange7d
-          ? parseFloat(chainInfo.debtBoldChange7d)
+          ? parseFloat(String(chainInfo.debtBoldChange7d))
           : null,
         spTvl: parseFloat(chainInfo.currentProtocolSpTvl || "0"),
         spTvlChange1d: chainInfo.spTvlChange1d
-          ? parseFloat(chainInfo.spTvlChange1d)
+          ? parseFloat(String(chainInfo.spTvlChange1d))
           : null,
         spTvlChange7d: chainInfo.spTvlChange7d
-          ? parseFloat(chainInfo.spTvlChange7d)
+          ? parseFloat(String(chainInfo.spTvlChange7d))
           : null,
         prev7DayProtocolRedemptionTotal: prev7DayProtocolRedemptionTotal,
         iconLink: protocolInfo.iconLink || "",
         url: protocolInfo.url || "",
         troveManagers: chainInfo.troveManagers
-          ? Object.values(chainInfo.troveManagers)
+          ? (Object.values(chainInfo.troveManagers)
               .map((tm) => formatTroveManagerForUI(tm, protocolId, chain))
-              .filter(Boolean)
-          : {},
+              .filter(Boolean) as FormattedTroveManager[])
+          : [],
       };
 
       // Sort troveManagers by TVL in descending order
@@ -110,7 +367,11 @@ export const formatProtocolDataForUI = (data) => {
 };
 
 // Extract trove manager formatting to a separate function
-function formatTroveManagerForUI(tm, protocolId, chain) {
+function formatTroveManagerForUI(
+  tm: TroveManager,
+  protocolId: string,
+  chain: string
+): FormattedTroveManager | null {
   // Skip trove managers with insufficient data
   if (!tm.colImmutables || !tm.currentColUSD) {
     return null;

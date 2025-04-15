@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { useGetTrovesData } from "@/app/api/troves/client";
 import {
   generateTrovesData,
   getUniqueProtocols,
@@ -13,90 +14,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ProtocolCombobox } from "@/components/protocol-combobox";
+import { useGetProtocols, formatTroveDataForUI } from "@/app/api/troves/client";
 
 // Custom component to render in the charts panel
 const CollateralCards = ({
-  collaterals,
-  troves,
+  formattedData,
+  selectedCollateralIds,
 }: {
-  collaterals: string[];
-  troves: Trove[];
+  formattedData: any;
+  selectedCollateralIds: string[];
 }) => {
-  // Calculate stats for each collateral type
-  const collateralStats = useMemo(() => {
-    const stats: Record<
-      string,
-      {
-        totalDebt: number;
-        avgPrice: number;
-        avgCR: number;
-        minCR: number;
-        totalCollateral: number; // Add total collateral
-      }
-    > = {};
+  // Find the selected trove managers from formattedData based on selectedCollateralIds
+  const selectedTroveManagers = useMemo(() => {
+    if (!formattedData || !formattedData.troveManagers) return [];
 
-    collaterals.forEach((collateral) => {
-      const trovesWithCollateral = troves.filter(
-        (trove) => trove.collateralType === collateral
-      );
-
-      if (trovesWithCollateral.length === 0) return;
-
-      const totalDebt = trovesWithCollateral.reduce(
-        (sum, trove) => sum + trove.debtAmount,
-        0
-      );
-      const totalCollateral = trovesWithCollateral.reduce(
-        (sum, trove) => sum + trove.collateralAmount,
-        0
-      );
-      const avgPrice =
-        trovesWithCollateral.reduce(
-          (sum, trove) => sum + trove.liquidationPrice,
-          0
-        ) / trovesWithCollateral.length;
-      const avgCR =
-        trovesWithCollateral.reduce(
-          (sum, trove) => sum + trove.collateralRatio,
-          0
-        ) / trovesWithCollateral.length;
-
-      // For MCR, simulate a value based on status
-      const minCR = Math.min(
-        ...trovesWithCollateral.map((trove) =>
-          trove.status === "danger"
-            ? 110
-            : trove.status === "warning"
-            ? 120
-            : 130
-        )
-      );
-
-      stats[collateral] = {
-        totalDebt,
-        avgPrice,
-        avgCR,
-        minCR,
-        totalCollateral,
-      };
-    });
-
-    return stats;
-  }, [collaterals, troves]);
+    return formattedData.troveManagers.filter((tm) =>
+      selectedCollateralIds.includes(`${formattedData.chain}:${tm.index}`)
+    );
+  }, [formattedData, selectedCollateralIds]);
 
   return (
     <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2 p-4">
-      {collaterals.map((collateral) => (
-        <Card key={collateral} className="w-full">
+      {selectedTroveManagers.map((tm) => (
+        <Card key={tm.id} className="w-full">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-xl">{collateral}</CardTitle>
+            <CardTitle className="text-xl">{tm.collateralSymbol}</CardTitle>
             <span className="text-sm text-muted-foreground">
-              {troves.filter((t) => t.collateralType === collateral).length ===
-              1
-                ? "1 trove"
-                : `${
-                    troves.filter((t) => t.collateralType === collateral).length
-                  } troves`}
+              {tm.troveCount === 1 ? "1 trove" : `${tm.troveCount} troves`}
             </span>
           </CardHeader>
           <CardContent>
@@ -106,7 +50,7 @@ const CollateralCards = ({
                   Collateral:
                 </span>
                 <span className="font-medium">
-                  {Math.round(collateralStats[collateral]?.totalCollateral)}
+                  {tm.currentCol ? parseFloat(tm.currentCol).toFixed(2) : "0"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -114,30 +58,35 @@ const CollateralCards = ({
                   Total Debt:
                 </span>
                 <span className="font-medium">
-                  ${collateralStats[collateral]?.totalDebt.toLocaleString()}
+                  $
+                  {tm.currentDebtBold
+                    ? parseFloat(tm.currentDebtBold).toLocaleString()
+                    : "0"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">CR:</span>
                 <span className="font-medium">
-                  {collateralStats[collateral]?.avgCR.toFixed(0)}%
+                  {tm.colRatio
+                    ? parseFloat(String(tm.colRatio)).toFixed(0)
+                    : "0"}
+                  %
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Price:</span>
                 <span className="font-medium">
                   $
-                  {collateralStats[collateral]?.avgPrice.toLocaleString(
-                    undefined,
-                    { maximumFractionDigits: 2 }
-                  )}
+                  {tm.currentColUSDPriceFeed
+                    ? parseFloat(
+                        String(tm.currentColUSDPriceFeed)
+                      ).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : "0"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">MCR:</span>
-                <span className="font-medium">
-                  {collateralStats[collateral]?.minCR}%
-                </span>
+                <span className="font-medium">{tm.mcr ? tm.mcr : "0"}%</span>
               </div>
             </div>
           </CardContent>
@@ -148,12 +97,69 @@ const CollateralCards = ({
 };
 
 export function TrovesPage() {
-  const troves = useMemo(() => generateTrovesData(), []);
-  const protocols = useMemo(() => getUniqueProtocols(troves), [troves]);
-
+  const { data: protocolData = [], isLoading: isLoadingProtocols } =
+    useGetProtocols();
+  // Extract protocol names for the combobox
+  const protocols = useMemo(
+    () => protocolData.map((protocol) => protocol.displayName),
+    [protocolData]
+  );
   // Changed to null initial value instead of "Aave"
   const [selectedProtocol, setSelectedProtocol] = useState<string | null>(null);
-  const [selectedCollaterals, setSelectedCollaterals] = useState<string[]>([]);
+  // Update to use composite key (chain:troveManagerIndex) for collaterals
+  interface CollateralIdentifier {
+    chain: string;
+    troveManagerIndex: number;
+  }
+  // Use a structure that preserves both chain and troveManagerIndex
+  const [selectedCollaterals, setSelectedCollaterals] = useState<
+    CollateralIdentifier[]
+  >([]);
+
+  // Define the Protocol interface that's used in selectedProtocolInfo
+  interface Protocol {
+    displayName: string;
+    protocolId: number;
+    chains: string[];
+    immutables?: {
+      [chain: string]: {
+        troveManagers?: Array<{
+          troveManagerIndex: number;
+          colImmutables: {
+            collTokenSymbol: string;
+          };
+        }>;
+      };
+    };
+  }
+
+  // Get the selected protocol object
+  const selectedProtocolInfo = useMemo(() => {
+    if (!selectedProtocol) return null;
+    console.log("Selected protocol:", selectedProtocol);
+    console.log("Protocol data:", protocolData);
+    return Object.values(protocolData).find(
+      (p: any) => p.displayName === selectedProtocol
+    ) as Protocol | null;
+  }, [selectedProtocol, protocolData]);
+
+  // Use the hook at the top level with the selected protocol info
+  const { data: trovesData, isLoading: isLoadingTroves } =
+    useGetTrovesData(selectedProtocolInfo);
+
+  // Format troves data for UI
+  const formattedData = useMemo(() => {
+    if (!trovesData) return null;
+
+    try {
+      const formatted = formatTroveDataForUI(trovesData);
+      console.log("FINAL FORMATTED TROVES DATA", formatted);
+      return formatted;
+    } catch (error) {
+      console.error("Error formatting troves data:", error);
+      return null;
+    }
+  }, [trovesData]);
 
   // Reset selected collaterals when protocol changes
   useEffect(() => {
@@ -161,31 +167,111 @@ export function TrovesPage() {
   }, [selectedProtocol]);
 
   const availableCollaterals = useMemo(() => {
-    if (!selectedProtocol) return [];
-    return getCollateralsByProtocol(troves, selectedProtocol);
-  }, [troves, selectedProtocol]);
+    if (!selectedProtocolInfo) return [];
+    const collaterals: {
+      id: string; // Composite key as string for easy comparison
+      chain: string;
+      troveManagerIndex: number;
+      name: string;
+    }[] = [];
+    // Get the chains from the selected protocol
+    const protocolChains = selectedProtocolInfo.chains || [];
+    // For each chain, extract collaterals from troveManagers
+    protocolChains.forEach((chain) => {
+      const chainImmutables = selectedProtocolInfo.immutables?.[chain];
+      if (chainImmutables?.troveManagers) {
+        chainImmutables.troveManagers.forEach((tm) => {
+          collaterals.push({
+            id: `${chain}:${tm.troveManagerIndex}`, // Composite key as string
+            chain,
+            troveManagerIndex: tm.troveManagerIndex,
+            name: tm.colImmutables.collTokenSymbol,
+          });
+        });
+      }
+    });
+    return collaterals;
+  }, [selectedProtocolInfo]);
 
   const filteredTroves = useMemo(() => {
-    if (!selectedProtocol || selectedCollaterals.length === 0) return [];
+    if (!formattedData || !selectedProtocol || selectedCollaterals.length === 0)
+      return [];
 
-    return troves.filter(
-      (trove) =>
-        trove.protocol === selectedProtocol &&
-        selectedCollaterals.includes(trove.collateralType)
-    );
-  }, [troves, selectedProtocol, selectedCollaterals]);
+    // Get all trove data for selected collaterals
+    const allTroves = [];
+
+    // For each selected collateral, find the matching trove manager and extract its trove data
+    selectedCollaterals.forEach((selected) => {
+      const troveManager = formattedData.troveManagers.find(
+        (tm) =>
+          tm.index === selected.troveManagerIndex &&
+          formattedData.chain === selected.chain
+      );
+
+      if (troveManager && troveManager.troveData) {
+        // Map trove data to the format expected by the DashboardLayout component
+        const trovesWithCollateralType = troveManager.troveData.map((trove) => {
+          return {
+            id: trove.troveId,
+            owner: trove.ownerAddress,
+            collateral: `${parseFloat(trove.coll).toFixed(4)} ${
+              troveManager.collateralSymbol
+            }`,
+            debtAmount: trove.entire_debt,
+            interestRate: trove.annualInterestRate,
+            liquidationPrice: troveManager.mcr
+              ? (trove.entire_debt * troveManager.mcr) /
+                (100 * parseFloat(trove.coll))
+              : 0,
+            collateralRatio: trove.colRatio || 0,
+            status:
+              trove.status === 0
+                ? "nonExistent"
+                : trove.status === 1
+                ? "active"
+                : trove.status === 2
+                ? "closedByOwner"
+                : trove.status === 3
+                ? "closedByLiquidation"
+                : trove.status === 4
+                ? "zombie"
+                : "unknown",
+          };
+        });
+
+        allTroves.push(...trovesWithCollateralType);
+      }
+    });
+
+    return allTroves;
+  }, [formattedData, selectedProtocol, selectedCollaterals]);
 
   const showData = selectedProtocol && selectedCollaterals.length > 0;
 
+  // Map selected collateral identifiers to their display names for UI
+  const selectedCollateralNames = useMemo(() => {
+    return availableCollaterals
+      .filter((collateral) =>
+        selectedCollaterals.some(
+          (selected) =>
+            selected.chain === collateral.chain &&
+            selected.troveManagerIndex === collateral.troveManagerIndex
+        )
+      )
+      .map((collateral) => collateral.name);
+  }, [availableCollaterals, selectedCollaterals]);
+
   // Custom component to replace charts
   const CustomChartPanel = useMemo(() => {
-    return showData ? (
+    return showData && formattedData ? (
       <CollateralCards
-        collaterals={selectedCollaterals}
-        troves={filteredTroves}
+        formattedData={formattedData}
+        selectedCollateralIds={selectedCollaterals.map(
+          (sc) => `${sc.chain}:${sc.troveManagerIndex}`
+        )}
       />
     ) : null;
-  }, [showData, selectedCollaterals, filteredTroves]);
+  }, [showData, formattedData, selectedCollaterals]);
 
   return (
     <div className="space-y-6">
@@ -197,6 +283,7 @@ export function TrovesPage() {
               protocols={protocols}
               selectedProtocol={selectedProtocol}
               onSelect={setSelectedProtocol}
+              isLoading={isLoadingProtocols}
             />
           </div>
           <div>
@@ -205,8 +292,19 @@ export function TrovesPage() {
             </label>
             <CollateralFilter
               collaterals={availableCollaterals}
-              selectedCollaterals={selectedCollaterals}
-              onSelectionChange={setSelectedCollaterals}
+              selectedCollaterals={selectedCollaterals.map(
+                (sc) => `${sc.chain}:${sc.troveManagerIndex}`
+              )}
+              onSelectionChange={(selectedIds) => {
+                const newSelected = selectedIds.map((id) => {
+                  const [chain, indexStr] = id.split(":");
+                  return {
+                    chain,
+                    troveManagerIndex: parseInt(indexStr, 10),
+                  };
+                });
+                setSelectedCollaterals(newSelected);
+              }}
             />
           </div>
         </div>
@@ -222,7 +320,6 @@ export function TrovesPage() {
             </AlertDescription>
           </Alert>
         )}
-
         {selectedProtocol !== null && selectedCollaterals.length === 0 && (
           <Alert
             variant="default"

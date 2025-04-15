@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ interface ProtocolComboboxProps {
   selectedProtocol: string | null;
   onSelect: (protocol: string) => void;
   className?: string;
+  isLoading?: boolean;
 }
 
 export function ProtocolCombobox({
@@ -23,6 +24,7 @@ export function ProtocolCombobox({
   selectedProtocol,
   onSelect,
   className,
+  isLoading = false,
 }: ProtocolComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
@@ -48,8 +50,18 @@ export function ProtocolCombobox({
           role="combobox"
           aria-expanded={open}
           className={cn("w-full justify-between", className)}
+          disabled={isLoading}
         >
-          {selectedProtocol ? selectedProtocol : "Select protocol..."}
+          {isLoading ? (
+            <div className="flex items-center">
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <span>Loading protocols...</span>
+            </div>
+          ) : selectedProtocol ? (
+            selectedProtocol
+          ) : (
+            "Select protocol..."
+          )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>

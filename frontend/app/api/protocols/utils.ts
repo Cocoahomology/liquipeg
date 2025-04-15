@@ -242,7 +242,7 @@ export function formatProtocolData(
         const latestPoolData = poolDataPoints[poolDataPoints.length - 1];
         const latestPriceData = priceDataPoints[priceDataPoints.length - 1];
 
-        // Skip if missiF    if (!latestPoolData || !latestPriceData) return;
+        if (!latestPoolData || !latestPriceData) return;
 
         // Calculate current metrics - only process the essential ones
         calculateCurrentMetrics(

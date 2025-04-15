@@ -600,42 +600,18 @@ export function ExpandableTable({
     ];
 
     const troveColumns: ColumnDef<any>[] = [
+      // Add ID column
       {
-        id: "expander",
-        header: () => null,
+        accessorKey: "id",
+        header: "ID",
         cell: ({ row }) => {
+          const id = row.getValue("id") as string;
+          // Show a shortened version of the ID to save space
           return (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                row.toggleExpanded();
-              }}
-              className="p-0 h-8 w-8"
-            >
-              {row.getIsExpanded() ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
-          );
-        },
-      },
-      {
-        id: "actions",
-        header: () => <span className="sr-only">Actions</span>,
-        cell: ({ row }) => {
-          return (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleSelectItem(row.original)}
-              title="View Analytics"
-              className="p-0 h-8 w-8"
-            >
-              <BarChart2 className="h-4 w-4" />
-            </Button>
+            <div className="font-mono text-xs">{`${id.substring(
+              0,
+              6
+            )}...${id.substring(id.length - 4)}`}</div>
           );
         },
       },
@@ -653,19 +629,11 @@ export function ExpandableTable({
         },
       },
       {
-        accessorKey: "collateralType",
+        accessorKey: "collateral",
         header: "Collateral",
         cell: ({ row }) => (
-          <div className="font-medium">{row.getValue("collateralType")}</div>
+          <div className="font-medium">{row.getValue("collateral")}</div>
         ),
-      },
-      {
-        accessorKey: "collateralAmount",
-        header: "Amount",
-        cell: ({ row }) => {
-          const amount = Number.parseFloat(row.getValue("collateralAmount"));
-          return <div className="text-right">{amount.toFixed(2)}</div>;
-        },
       },
       {
         accessorKey: "debtAmount",
@@ -686,6 +654,31 @@ export function ExpandableTable({
         cell: ({ row }) => {
           const ratio = Number.parseFloat(row.getValue("collateralRatio"));
           return <div className="text-right">{ratio.toFixed(0)}%</div>;
+        },
+      },
+      // Add liquidation price column
+      {
+        accessorKey: "liquidationPrice",
+        header: "Liq. Price",
+        cell: ({ row }) => {
+          const liquidationPrice = Number.parseFloat(
+            row.getValue("liquidationPrice")
+          );
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            maximumFractionDigits: 2,
+          }).format(liquidationPrice);
+          return <div className="text-right">{formatted}</div>;
+        },
+      },
+      // Add interest rate column
+      {
+        accessorKey: "interestRate",
+        header: "Interest Rate",
+        cell: ({ row }) => {
+          const interestRate = Number.parseFloat(row.getValue("interestRate"));
+          return <div className="text-right">{interestRate.toFixed(2)}%</div>;
         },
       },
       {
@@ -957,7 +950,10 @@ export function ExpandableTable({
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const isNameOrChain =
-                  header.column.id === "name" || header.column.id === "chain";
+                  header.column.id === "name" ||
+                  header.column.id === "chain" ||
+                  header.column.id === "owner" ||
+                  header.column.id === "collateral";
 
                 return (
                   <TableHead
