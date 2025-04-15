@@ -3,12 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useGetTrovesData } from "@/app/api/troves/client";
-import {
-  generateTrovesData,
-  getUniqueProtocols,
-  getCollateralsByProtocol,
-  Trove,
-} from "@/lib/dummy-data";
 import { CollateralFilter } from "@/components/collateral-filter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
@@ -221,6 +215,7 @@ export function TrovesPage() {
               troveManager.collateralSymbol
             }`,
             debtAmount: trove.entire_debt,
+            debtInFront: trove.debtInFront || 0, // Add debtInFront property
             interestRate: trove.annualInterestRate,
             liquidationPrice: troveManager.mcr
               ? (trove.entire_debt * troveManager.mcr) /
@@ -250,19 +245,6 @@ export function TrovesPage() {
   }, [formattedData, selectedProtocol, selectedCollaterals]);
 
   const showData = selectedProtocol && selectedCollaterals.length > 0;
-
-  // Map selected collateral identifiers to their display names for UI
-  const selectedCollateralNames = useMemo(() => {
-    return availableCollaterals
-      .filter((collateral) =>
-        selectedCollaterals.some(
-          (selected) =>
-            selected.chain === collateral.chain &&
-            selected.troveManagerIndex === collateral.troveManagerIndex
-        )
-      )
-      .map((collateral) => collateral.name);
-  }, [availableCollaterals, selectedCollaterals]);
 
   // Custom component to replace charts
   const CustomChartPanel = useMemo(() => {

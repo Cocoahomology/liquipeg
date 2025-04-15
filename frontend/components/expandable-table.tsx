@@ -610,8 +610,8 @@ export function ExpandableTable({
           return (
             <div className="font-mono text-xs">{`${id.substring(
               0,
-              6
-            )}...${id.substring(id.length - 4)}`}</div>
+              4
+            )}...${id.substring(id.length - 3)}`}</div>
           );
         },
       },
@@ -623,8 +623,8 @@ export function ExpandableTable({
           return (
             <div className="font-mono text-xs">{`${address.substring(
               0,
-              6
-            )}...${address.substring(address.length - 4)}`}</div>
+              4
+            )}...${address.substring(address.length - 3)}`}</div>
           );
         },
       },
@@ -645,6 +645,20 @@ export function ExpandableTable({
             currency: "USD",
             maximumFractionDigits: 2,
           }).format(debt);
+          return <div className="text-right font-medium">{formatted}</div>;
+        },
+      },
+      {
+        accessorKey: "debtInFront",
+        header: "Debt In Front",
+        cell: ({ row }) => {
+          const debtInFront = Number.parseFloat(row.getValue("debtInFront"));
+          const formatted = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+            notation: "compact",
+            maximumFractionDigits: 2,
+          }).format(debtInFront);
           return <div className="text-right font-medium">{formatted}</div>;
         },
       },

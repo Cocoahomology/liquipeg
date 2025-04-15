@@ -87,29 +87,55 @@ interface ColImmutables {
   [key: string]: any;
 }
 
-interface ChainMetrics {
-  current: {
-    colUSD: number;
-    debtBold: number;
-    spBold: number;
-    spColUsd: number;
-  };
-  prevDay: {
-    colUSD: number;
-    debtBold: number;
-    spBold: number;
-    spColUsd: number;
-  };
-  prev7Day: {
-    colUSD: number;
-    debtBold: number;
-    spBold: number;
-    spColUsd: number;
-  };
-}
-
 export function formatTroveData(protocolData: Protocol): Protocol {
   const protocol = protocolData;
+
+  // Collect all troves across all chains and trove managers to calculate debtInFront properly
+  const allTrovesByProtocol: Record<
+    string,
+    Array<{ trove: any; chainName: string; troveManagerIndex: number }>
+  > = {};
+
+  // First pass: Collect all troves and organize by chain/manager
+  Object.keys(protocol.chainData).forEach((chainName) => {
+    const chainData = protocol.chainData[chainName];
+
+    chainData.troveManagers = chainData.troveManagers || {};
+
+    // Convert array to object if it's still an array
+    if (Array.isArray(chainData.troveManagers)) {
+      const troveManagersObj: TroveManagersMap = {};
+      chainData.troveManagers.forEach((tm) => {
+        troveManagersObj[tm.troveManagerIndex] = tm;
+      });
+      chainData.troveManagers = troveManagersObj;
+    }
+
+    // Collect troves from each trove manager
+    Object.values(chainData.troveManagers).forEach((troveManager) => {
+      const protocolId = protocol.protocolInfo?.protocolId;
+
+      if (!protocolId) return;
+
+      if (!allTrovesByProtocol[protocolId]) {
+        allTrovesByProtocol[protocolId] = [];
+      }
+
+      // Add troves to the collection with metadata
+      if (troveManager.troveData && troveManager.troveData.length > 0) {
+        troveManager.troveData.forEach((trove) => {
+          // Only include troves with valid data
+          if (trove.entire_debt && parseFloat(trove.entire_debt) > 0) {
+            allTrovesByProtocol[protocolId].push({
+              trove,
+              chainName,
+              troveManagerIndex: troveManager.troveManagerIndex,
+            });
+          }
+        });
+      }
+    });
+  });
 
   // Process each chain in the protocol
   Object.keys(protocol.chainData).forEach((chainName) => {
@@ -166,10 +192,15 @@ export function formatTroveData(protocolData: Protocol): Protocol {
           troveData.length > 0 &&
           latestPriceData.colUSDPriceFeed
         ) {
+          // Process each trove to calculate colRatio and debtInFront
           troveData.forEach((trove) => {
-            if (trove.coll && trove.debt && parseFloat(trove.debt) > 0) {
+            if (
+              trove.coll &&
+              trove.entire_debt &&
+              parseFloat(trove.entire_debt) > 0
+            ) {
               const collValue = parseFloat(trove.coll);
-              const debtValue = parseFloat(trove.debt);
+              const debtValue = parseFloat(trove.entire_debt);
               const priceValue = parseFloat(
                 String(latestPriceData.colUSDPriceFeed)
               );
@@ -178,8 +209,38 @@ export function formatTroveData(protocolData: Protocol): Protocol {
               trove.colRatio =
                 (collValue * priceValue * 1e18) /
                 (debtValue * decimalsMultiplier);
+
+              // Calculate debtInFront based on the interest rate across all trove managers
+              const protocolId = protocol.protocolInfo?.protocolId;
+              if (protocolId && allTrovesByProtocol[protocolId]) {
+                const troveIR =
+                  trove.annualInterestRate !== undefined
+                    ? parseFloat(trove.annualInterestRate)
+                    : Infinity;
+
+                // Sum debt of all troves across all trove managers that have annualInterestRate < current trove's rate
+                const debtInFront = allTrovesByProtocol[protocolId].reduce(
+                  (sum, { trove: otherTrove }) => {
+                    const otherIR =
+                      otherTrove.annualInterestRate !== undefined
+                        ? parseFloat(otherTrove.annualInterestRate)
+                        : Infinity;
+
+                    if (otherIR < troveIR) {
+                      return sum + parseFloat(otherTrove.entire_debt || "0");
+                    }
+                    return sum;
+                  },
+                  0
+                );
+
+                trove.debtInFront = debtInFront;
+              } else {
+                trove.debtInFront = 0;
+              }
             } else {
               trove.colRatio = null;
+              trove.debtInFront = 0;
             }
           });
         }

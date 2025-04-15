@@ -38,7 +38,8 @@ interface FormattedTroveData {
   status: number;
   entire_debt: number; // Converted to human-readable format (divided by 1e18)
   accrued_interest: string;
-  colRatio?: number | null; // Converted to percentage
+  colRatio?: number; // Converted to percentage
+  debtInFront?: number; // Converted to human-readable format (divided by 1e18)
 }
 
 interface FormattedTroveManager {
@@ -112,9 +113,13 @@ export const formatTroveDataForUI = (data: any): FormattedProtocolData => {
                     ? parseFloat(String(trove.colRatio)) * 100
                     : null, // Format colRatio as percentage
                   coll: parseFloat(trove.coll || "0") / decimalsMultiplier, // Convert collateral to human-readable format
+                  debtInFront: parseFloat(trove.debtInFront || "0") / 1e18, // Convert to human-readable format
                 }))
-                // Sort by collateral value (descending)
-                .sort((a, b) => parseFloat(b.coll) - parseFloat(a.coll))
+                .sort(
+                  (a, b) =>
+                    parseFloat(b.annualInterestRate) -
+                    parseFloat(a.annualInterestRate)
+                )
             : [];
 
           // Format trove manager data
