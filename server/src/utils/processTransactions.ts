@@ -64,7 +64,10 @@ export const getEvmEventLogs = async (
               console.info(`No logs received for event ${eventName}.`);
             }
           } catch (e: any) {
-            console.error(target, e);
+            // FIX: log error
+            const errString = `Unable to get logs for event ${eventName} with target ${target}.`;
+            console.error(errString);
+            console.dir(e, { depth: null });
             bail(e);
           }
         },
