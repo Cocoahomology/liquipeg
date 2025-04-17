@@ -1,12 +1,10 @@
-import type { Protocol } from "~/api/types";
 import { formatProtocolData } from "./utils";
-import { fetchWithErrorLogging } from "~/utils/async";
+import { fetchWithRetries } from "~/utils/async";
 import {
   getProtocols,
   getPoolDataChart,
   getLatestTroves,
   getEvents,
-  fetchWithRetries,
 } from "../shared";
 
 // Separate raw data fetching from formatting
