@@ -24,7 +24,8 @@ export type ChartConfig = {
     | "pricesLiqs"
     | "lstDetails"
     | "liquidationEvents"
-    | "redemptionEvents";
+    | "redemptionEvents"
+    | "liqDepth"; // Add the new chart type
 };
 
 // Update the interface to include new props
@@ -171,9 +172,13 @@ export function DashboardLayout({
         | "lstDetails"
         | "liquidationEvents"
         | "redemptionEvents"
+        | "liqDepth" // Add the new chart type
     ) => {
-      // Only allow updating to lstDetails if a trove manager is selected
-      if (type === "lstDetails" && selectedTroveManagerIndex === null) {
+      // Only allow updating to lstDetails or liqDepth if a trove manager is selected
+      if (
+        (type === "lstDetails" || type === "liqDepth") &&
+        selectedTroveManagerIndex === null
+      ) {
         return;
       }
 

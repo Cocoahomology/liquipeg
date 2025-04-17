@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { X, LineChart, BarChart, Table as TableIcon } from "lucide-react";
 import { DualAxisChart } from "./dual-axis-chart";
+import { LogChart } from "./log-chart";
 import { useTheme } from "next-themes";
 import { TableChart } from "./table-chart";
 
@@ -22,7 +23,8 @@ interface ChartContainerProps {
     | "pricesLiqs"
     | "lstDetails"
     | "liquidationEvents"
-    | "redemptionEvents";
+    | "redemptionEvents"
+    | "liqDepth"; // Add the new chart type
   data: any[];
   monthlyData: any[];
   dataType: "protocols" | "troves";
@@ -34,6 +36,7 @@ interface ChartContainerProps {
       | "lstDetails"
       | "liquidationEvents"
       | "redemptionEvents"
+      | "liqDepth" // Add the new chart type
   ) => void;
   onRemove: () => void;
   selectedTroveManagerIndex: number | null;
@@ -41,16 +44,17 @@ interface ChartContainerProps {
   redemptionEvents?: Array<any>; // Add prop for redemption events
 }
 
-// Chart type options
+// Chart type options - add liqDepth option
 const chartTypes = [
   { value: "crDa", label: "CR/TVL", icon: BarChart },
   { value: "pricesLiqs", label: "Prices/Liqs", icon: LineChart },
   { value: "lstDetails", label: "LST Details", icon: LineChart },
   { value: "liquidationEvents", label: "Liquidations", icon: TableIcon },
   { value: "redemptionEvents", label: "Redemptions", icon: TableIcon },
+  { value: "liqDepth", label: "Liquidity Depth", icon: LineChart },
 ];
 
-// Chart titles by type and data type
+// Add to chart titles
 const chartTitles = {
   protocols: {
     crDa: "CR/TVL",
@@ -58,6 +62,7 @@ const chartTitles = {
     liquidationEvents: "Liquidation Events",
     redemptionEvents: "Redemption Events",
     lstDetails: "LST Details",
+    liqDepth: "Liquidity Depth",
   },
   troves: {
     crDa: "CR/TVL",
@@ -65,6 +70,7 @@ const chartTitles = {
     lstDetails: "LST Details",
     liquidationEvents: "Liquidation Events",
     redemptionEvents: "Redemption Events",
+    liqDepth: "Liquidity Depth",
   },
 };
 
@@ -85,20 +91,20 @@ export function ChartContainer({
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
 
-  const crHistory = chartData?.crHistory || [];
   const crDaData = chartData?.crDaData || { series: [] };
   const pricesLiqsData = chartData?.pricesLiqsData || { series: [] };
   const lstDetailsData = chartData?.lstDetailsData || { series: [] };
+  const liqDepthData = chartData?.liqDepthData || { series: [] }; // Add this line
 
   console.log("Chart data received:", chartData);
-  console.log("CR History:", crHistory);
-  console.log("CR vs TVL Data:", crDaData);
-  console.log("Prices & Liqs Data:", pricesLiqsData);
 
+  // Only show LST Details and Liquidity Depth when trove manager is selected
   const availableChartTypes =
     selectedTroveManagerIndex !== null
       ? chartTypes
-      : chartTypes.filter((type) => type.value !== "lstDetails");
+      : chartTypes.filter(
+          (type) => type.value !== "lstDetails" && type.value !== "liqDepth"
+        );
 
   const ChartIcon =
     chartTypes.find((type) => type.value === chartType)?.icon || BarChart;
@@ -127,17 +133,21 @@ export function ChartContainer({
                   | "lstDetails"
                   | "liquidationEvents"
                   | "redemptionEvents"
+                  | "liqDepth"
               )
             }
           >
-            <SelectTrigger className="w-[140px] h-8">
-              <SelectValue placeholder="Select chart type" />
+            <SelectTrigger className="w-[160px] h-8">
+              <SelectValue
+                placeholder="Select chart type"
+                className="whitespace-nowrap overflow-hidden text-ellipsis"
+              />
             </SelectTrigger>
             <SelectContent>
               {availableChartTypes.map((type) => (
                 <SelectItem key={type.value} value={type.value}>
-                  <div className="flex items-center">
-                    <type.icon className="h-4 w-4 mr-2" />
+                  <div className="flex items-center whitespace-nowrap">
+                    <type.icon className="h-4 w-4 mr-2 flex-shrink-0" />
                     {type.label}
                   </div>
                 </SelectItem>
@@ -188,6 +198,14 @@ export function ChartContainer({
             eventsData={redemptionEvents}
             height={250}
             darkMode={isDarkMode}
+          />
+        ) : chartType === "liqDepth" ? (
+          <LogChart
+            {...liqDepthData}
+            height={250}
+            darkMode={isDarkMode}
+            axisFormatter="percentage"
+            emptyMessage="Loading..."
           />
         ) : (
           <DualAxisChart

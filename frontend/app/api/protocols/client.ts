@@ -1,4 +1,3 @@
-import { fetchApi } from "~/utils/async";
 import { getProtocolsOverviewPageData } from ".";
 import { useQuery } from "@tanstack/react-query";
 import { getColorForIndex } from "~/utils";
@@ -192,6 +191,7 @@ interface RawProtocolsData {
 interface FormattedTroveManager {
   id: string;
   index: number;
+  collToken: string | null;
   collateralSymbol: string;
   tvl: number;
   prevDayTvl: number | null;
@@ -470,6 +470,8 @@ function formatTroveManagerForUI(
     ? Math.floor(parseFloat(tm.colImmutables.SCR) / 10 ** 16)
     : 0;
 
+  const collToken = tm.colImmutables.collToken || null;
+
   // Format prev7DayRedemptionTotal - divide by 1e18 as requested
   const prev7DayRedemptionTotal = tm.prev7DayRedemptionTotal
     ? parseFloat(tm.prev7DayRedemptionTotal) / 1e18
@@ -542,6 +544,7 @@ function formatTroveManagerForUI(
   return {
     id: `${protocolId}-${chain}`,
     index: tm.troveManagerIndex,
+    collToken: collToken || null,
     collateralSymbol: tm.colImmutables.collTokenSymbol || "Unknown",
     tvl: parseFloat(tm.currentColUSD || "0"),
     prevDayTvl: tm.prevDayColUSD ? parseFloat(tm.prevDayColUSD) : null,
