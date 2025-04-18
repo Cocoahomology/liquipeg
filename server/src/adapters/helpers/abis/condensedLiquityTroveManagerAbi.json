@@ -13,55 +13,6 @@
       "collChangeFromOperation": "_collChangeFromOperation"
     }
   },
-  "ActivePoolAddressChanged": {
-    "topic": "ActivePoolAddressChanged(address)",
-    "abi": "event ActivePoolAddressChanged(address indexed _newActivePoolAddress)",
-    "keys": {
-      "newActivePoolAddress": "_newActivePoolAddress"
-    }
-  },
-  "BoldTokenAddressChanged": {
-    "topic": "BoldTokenAddressChanged(address)",
-    "abi": "event BoldTokenAddressChanged(address indexed _newBoldTokenAddress)",
-    "keys": {
-      "newBoldTokenAddress": "_newBoldTokenAddress"
-    }
-  },
-  "BorrowerOperationsAddressChanged": {
-    "topic": "BorrowerOperationsAddressChanged(address)",
-    "abi": "event BorrowerOperationsAddressChanged(address indexed _newBorrowerOperationsAddress)",
-    "keys": {
-      "newBorrowerOperationsAddress": "_newBorrowerOperationsAddress"
-    }
-  },
-  "CollSurplusPoolAddressChanged": {
-    "topic": "CollSurplusPoolAddressChanged(address)",
-    "abi": "event CollSurplusPoolAddressChanged(address indexed _collSurplusPoolAddress)",
-    "keys": {
-      "collSurplusPoolAddress": "_collSurplusPoolAddress"
-    }
-  },
-  "CollateralRegistryAddressChanged": {
-    "topic": "CollateralRegistryAddressChanged(address)",
-    "abi": "event CollateralRegistryAddressChanged(address indexed _collateralRegistryAddress)",
-    "keys": {
-      "collateralRegistryAddress": "_collateralRegistryAddress"
-    }
-  },
-  "DefaultPoolAddressChanged": {
-    "topic": "DefaultPoolAddressChanged(address)",
-    "abi": "event DefaultPoolAddressChanged(address indexed _newDefaultPoolAddress)",
-    "keys": {
-      "newDefaultPoolAddress": "_newDefaultPoolAddress"
-    }
-  },
-  "GasPoolAddressChanged": {
-    "topic": "GasPoolAddressChanged(address)",
-    "abi": "event GasPoolAddressChanged(address indexed _gasPoolAddress)",
-    "keys": {
-      "gasPoolAddress": "_gasPoolAddress"
-    }
-  },
   "Liquidation": {
     "topic": "Liquidation(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)",
     "abi": "event Liquidation(uint256 _debtOffsetBySP, uint256 _debtRedistributed, uint256 _boldGasCompensation, uint256 _collGasCompensation, uint256 _collSentToSP, uint256 _collRedistributed, uint256 _collSurplus, uint256 _L_ETH, uint256 _L_boldDebt, uint256 _price)",
@@ -76,13 +27,6 @@
       "L_ETH": "_L_ETH",
       "L_boldDebt": "_L_boldDebt",
       "price": "_price"
-    }
-  },
-  "PriceFeedAddressChanged": {
-    "topic": "PriceFeedAddressChanged(address)",
-    "abi": "event PriceFeedAddressChanged(address indexed _newPriceFeedAddress)",
-    "keys": {
-      "newPriceFeedAddress": "_newPriceFeedAddress"
     }
   },
   "Redemption": {
@@ -102,27 +46,6 @@
     "keys": {
       "troveId": "_troveId",
       "ETHFee": "_ETHFee"
-    }
-  },
-  "SortedTrovesAddressChanged": {
-    "topic": "SortedTrovesAddressChanged(address)",
-    "abi": "event SortedTrovesAddressChanged(address indexed _sortedTrovesAddress)",
-    "keys": {
-      "sortedTrovesAddress": "_sortedTrovesAddress"
-    }
-  },
-  "StabilityPoolAddressChanged": {
-    "topic": "StabilityPoolAddressChanged(address)",
-    "abi": "event StabilityPoolAddressChanged(address indexed _stabilityPoolAddress)",
-    "keys": {
-      "stabilityPoolAddress": "_stabilityPoolAddress"
-    }
-  },
-  "TroveNFTAddressChanged": {
-    "topic": "TroveNFTAddressChanged(address)",
-    "abi": "event TroveNFTAddressChanged(address indexed _newTroveNFTAddress)",
-    "keys": {
-      "newTroveNFTAddress": "_newTroveNFTAddress"
     }
   }
 }
