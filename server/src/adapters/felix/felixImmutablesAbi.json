@@ -1,0 +1,22 @@
+{
+  "boldToken": "address:feUSDToken",
+  "tokenSymbol": "string:symbol",
+  "fetchTroveManagers": {
+    "lengthAbi": "totalCollaterals",
+    "itemAbi": "getTroveManager"
+  },
+  "activePool": "address:activePool",
+  "defaultPoolAddress": "address:defaultPoolAddress",
+  "CCR": "uint256:CCR",
+  "SCR": "uint256:SCR",
+  "MCR": "uint256:MCR",
+  "interestRouter": "address:interestRouter",
+  "collToken": "address:collToken",
+  "stabilityPool": "address:stabilityPool",
+  "borrowerOperationsAddress": "address:borrowerOperationsAddress",
+  "sortedTroves": "address:sortedTroves",
+  "troveNFT": "address:troveNFT",
+  "priceFeed": "address:priceFeed",
+  "decimals": "uint8:decimals",
+  "symbol": "string:symbol"
+}

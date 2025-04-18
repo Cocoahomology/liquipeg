@@ -9,4 +9,12 @@ export default [
     url: "",
     chains: ["ethereum"],
   },
+  {
+    id: 2,
+    displayName: "Felix",
+    protocolDbName: "felix",
+    iconLink: "felix",
+    url: "",
+    chains: ["hyperevm"],
+  },
 ] as Protocol[];

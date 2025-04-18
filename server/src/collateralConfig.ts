@@ -85,6 +85,18 @@ export const collateralConfigs: ProtocolCollateralConfig = {
       LSTUnderlyingMarketRateOracle: { address: "0x536218f9E9Eb48863970252233c8F271f554C2d0", oracleType: "chainlink" },
     },
   },
+  "2-hyperevm": {
+    0: {
+      priceFeedType: "mainnet",
+      priceFeedLastGoodPriceDecimals: 18,
+      colUSDOracle: { address: "0x12a1868b89789900e413a6241CA9032dD1873a51", oracleType: "custom" },
+    },
+    1: {
+      priceFeedType: "mainnet",
+      priceFeedLastGoodPriceDecimals: 18,
+      colUSDOracle: { address: "0xf59F338424062dD1D44A9b4dD2721128A45358ab", oracleType: "custom" },
+    },
+  },
 };
 
 export function getCollateralConfig(protocolId: number, chain: string, troveManagerIndex: number): CollateralConfig {

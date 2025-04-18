@@ -1,0 +1,17 @@
+{
+  "baseRate": "uint256:baseRate",
+  "getRedemptionRate": "uint256:getRedemptionRate",
+  "totalCollaterals": "uint256:totalCollaterals",
+  "getEntireSystemColl": "uint256:getEntireBranchColl",
+  "getEntireSystemDebt": "uint256:getEntireBranchDebt",
+  "getTroveIdsCount": "uint256:getTroveIdsCount",
+  "aggWeightedRecordedDebtSum": "uint256:aggRecordedDebt",
+  "aggRecordedDebt": "uint256:calcPendingAggInterest",
+  "calcPendingAggInterest": "uint256:calcPendingAggInterest",
+  "calcPendingSPYield": "uint256:calcPendingSPYield",
+  "lastAggUpdateTime": "uint256:lastAggUpdateTime",
+  "getCollBalance": "uint256:getCollBalance",
+  "getTotalBoldDeposits": "uint256:getTotalfeUSDDeposits",
+  "getYieldGainsOwed": "uint256:getYieldGainsOwed",
+  "getYieldGainsPending": "uint256:getYieldGainsPending"
+}
