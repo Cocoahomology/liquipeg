@@ -2,7 +2,7 @@ import { type ChainApi } from "@defillama/sdk";
 import { EventData, CoreColImmutables, ColPoolData } from "../../utils/types";
 import { ImmutablesAbi, CorePoolAbi } from "../types";
 import { getEvmEventLogs } from "../../utils/processTransactions";
-import liquityFormattedEventAbi from "../helpers/abis/formattedLiquityTroveManagerAbi.json";
+import liquityCondensedEventAbi from "../helpers/abis/condensedLiquityTroveManagerAbi.json";
 import { getContractCreationDataEtherscan } from "../../utils/etherscan";
 import { getLatestCoreImmutables } from "../../db/read";
 import { PromisePool } from "@supercharge/promise-pool";
@@ -16,6 +16,18 @@ const abi = {
     "function getLatestTroveData(uint256 _troveId) view returns (uint256 entireDebt, uint256 entireColl, uint256 redistBoldDebtGain, uint256 redistCollGain, uint256 accruedInterest, uint256 recordedDebt, uint256 annualInterestRate, uint256 weightedRecordedDebt, uint256 accruedBatchManagementFee, uint256 lastInterestRateAdjTime)",
   getTroveAnnualInterestRate: "function getTroveAnnualInterestRate(uint256 _troveId) view returns (uint256)",
 };
+
+// Utility function to split array into chunks
+function chunkArray<T>(array: T[], chunkSize: number): T[][] {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+// Utility function to create a delay
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function getTrovesByColRegistry(colRegistryAddress: string) {
   return async (api: ChainApi) => {
@@ -33,12 +45,29 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
     const troveIdsList = await Promise.all(
       troveCountList.map(async (troveCount, index) => {
         const troveCountArray = Array.from({ length: troveCount }, (_, index) => index);
-        return await api.multiCall({
-          abi: abi.getTroveFromTroveIdsArray,
-          calls: troveCountArray.map((count) => {
-            return { target: troveManagersList[index], params: count };
-          }),
-        });
+        const BATCH_SIZE = 50;
+        const DELAY_MS = 200;
+        const batches = chunkArray(troveCountArray, BATCH_SIZE);
+        let allTroveIds: any[] = [];
+
+        // Process each batch with a delay between requests
+        for (let i = 0; i < batches.length; i++) {
+          const batch = batches[i];
+          const batchResults = await api.multiCall({
+            abi: abi.getTroveFromTroveIdsArray,
+            calls: batch.map((count) => {
+              return { target: troveManagersList[index], params: count };
+            }),
+          });
+
+          allTroveIds = [...allTroveIds, ...batchResults];
+
+          if (i < batches.length - 1) {
+            await sleep(DELAY_MS);
+          }
+        }
+
+        return allTroveIds;
       })
     );
 
@@ -51,6 +80,7 @@ export function getTrovesByColRegistry(colRegistryAddress: string) {
             return { target: troveManagersList[index], params: troveId };
           }),
         })) as { [prop: string]: number }[];
+
         const latestTroveData = (await api.multiCall({
           abi: abi.getLatestTroveData,
           calls: troveIds.map((troveId) => {
@@ -113,16 +143,21 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
 
     let results = [] as EventData[];
     await PromisePool.for(troveManagersList).process(async (target, index) => {
-      for (const [eventName, eventAbi] of Object.entries(liquityFormattedEventAbi)) {
-        const res = await getEvmEventLogs(eventName, fromBlock, toBlock, api, [
-          {
-            target: target,
-            topic: eventAbi.topic,
-            abi: eventAbi.abi,
-            argKeys: eventAbi.keys,
-          },
-        ]);
-        results.push(...res.map((obj) => ({ ...obj, troveManagerIndex: index })));
+      for (const [eventName, eventAbi] of Object.entries(liquityCondensedEventAbi)) {
+        try {
+          const res = await getEvmEventLogs(eventName, fromBlock, toBlock, api, [
+            {
+              target: target,
+              topic: eventAbi.topic,
+              abi: eventAbi.abi,
+              argKeys: eventAbi.keys,
+            },
+          ]);
+          results.push(...res.map((obj) => ({ ...obj, troveManagerIndex: index })));
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          console.error(`Failed to get events for ${eventName} on troveManager ${target}: ${errorMessage}`);
+        }
       }
     });
 
@@ -130,7 +165,12 @@ export function getTroveOperationsByColRegistry(colRegistryAddress: string) {
   };
 }
 
-export function getImmutablesByColRegistry(colRegistryAddress: string, protocolId: number, abi: ImmutablesAbi) {
+export function getImmutablesByColRegistry(
+  colRegistryAddress: string,
+  protocolId: number,
+  abi: ImmutablesAbi,
+  troveManagerToAddressesRegistry?: { [troveManagerIndex: number]: string }
+) {
   return async (api: ChainApi) => {
     const boldToken = (await api.call({
       abi: abi.boldToken,
@@ -158,6 +198,13 @@ export function getImmutablesByColRegistry(colRegistryAddress: string, protocolI
     const addressesRegistryList = (
       await Promise.allSettled(
         troveManagersList.map(async (troveManager, index) => {
+          if (troveManagerToAddressesRegistry && troveManagerToAddressesRegistry[index] !== undefined) {
+            return {
+              address: troveManagerToAddressesRegistry[index],
+              troveManagerIndex: index,
+            };
+          }
+
           try {
             const creationData = await getContractCreationDataEtherscan(api.chain, troveManager, 2, 30000);
             const creationBytecode = creationData.creationBytecode;
@@ -411,7 +458,7 @@ export function getCorePoolDataByProtocolId(protocolId: number, abi: CorePoolAbi
         .then((res) => res.map((item) => String(item))),
     ]);
 
-    let collateralPoolData = [] as ColPoolData[];
+    let collateralPoolData = [] as any[];
 
     for (let i = 0; i < troveManagerList.length; i++) {
       collateralPoolData.push({
