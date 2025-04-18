@@ -7,30 +7,58 @@ import { getRecordedBlocksByProtocolId } from "../db/read";
 import { insertRecordedBlockEntries } from "../db/write";
 import { RecordedBlocksEntryWithChain } from "../utils/types";
 
+// Parse command line arguments
 const protocolId = parseInt(process.argv[2], 10);
-const startTimestamp = parseInt(process.argv[3], 10);
-const endTimestamp = parseInt(process.argv[4], 10);
+const rangeStart = parseInt(process.argv[3], 10);
+const rangeEnd = parseInt(process.argv[4], 10);
+// New optional chain argument when using block numbers directly
+const specificChain = process.argv[5];
+// Determine if we're using timestamp or block range based on args
+const useDirectBlockRange = specificChain !== undefined;
 
 async function fillAdapterHistorical(
-  startTimestamp: number,
-  endTimestamp: number,
+  rangeStart: number,
+  rangeEnd: number,
   protocolDbName?: string,
-  protocolId?: number
+  protocolId?: number,
+  useDirectBlockRange: boolean = false,
+  specificChain?: string
 ) {
   const protocolData = importProtocol(protocolDbName, protocolId);
   if (!protocolData) throw new Error("Protocol not found in protocolData");
-  console.log(
-    `Attempting to fill adapter for ${protocolData.protocolDbName} from ${startTimestamp} to ${endTimestamp}.`
-  );
+
+  if (useDirectBlockRange) {
+    console.log(
+      `Attempting to fill adapter for ${protocolData.protocolDbName} from block ${rangeStart} to ${rangeEnd} on chain ${specificChain}.`
+    );
+  } else {
+    console.log(
+      `Attempting to fill adapter for ${protocolData.protocolDbName} from timestamp ${rangeStart} to ${rangeEnd}.`
+    );
+  }
 
   const recordedBlocksList = await getRecordedBlocksByProtocolId(protocolData.id);
   let recordedBlockEntries: RecordedBlocksEntryWithChain[] = [];
 
-  const { results, errors } = await PromisePool.for(protocolData.chains).process(async (chain, i) => {
+  // If using direct block range, only process the specified chain
+  const chainsToProcess = useDirectBlockRange && specificChain ? [specificChain] : protocolData.chains;
+
+  const { results, errors } = await PromisePool.for(chainsToProcess).process(async (chain, i) => {
     console.log(`Running adapter for ${chain} for ${protocolData.protocolDbName}`);
     await wait(500 * i);
-    const startBlock = (await lookupBlock(startTimestamp, { chain: chain })).number;
-    const endBlock = (await lookupBlock(endTimestamp, { chain: chain })).number;
+
+    let startBlock: number;
+    let endBlock: number;
+
+    if (useDirectBlockRange) {
+      // Use provided block numbers directly
+      startBlock = rangeStart;
+      endBlock = rangeEnd;
+    } else {
+      // Convert timestamps to block numbers
+      startBlock = (await lookupBlock(rangeStart, { chain: chain })).number;
+      endBlock = (await lookupBlock(rangeEnd, { chain: chain })).number;
+    }
 
     const recordedBlocksEntry = recordedBlocksList.find((entry) => entry.chain === chain);
 
@@ -92,12 +120,19 @@ async function fillAdapterHistorical(
     console.log("No recorded blocks were updated. This may be because the block ranges were invalid.");
   }
 
-  console.log(`Finished running adapter from ${startTimestamp} to ${endTimestamp} for ${protocolData.protocolDbName}`);
+  console.log(`Finished running adapter from ${rangeStart} to ${rangeEnd} for ${protocolData.protocolDbName}`);
   return { success: true, failedChains: results.filter((r) => !r.success).map((r) => r.chain) };
 }
 
 (async () => {
-  const result = await fillAdapterHistorical(startTimestamp, endTimestamp, undefined, protocolId);
+  const result = await fillAdapterHistorical(
+    rangeStart,
+    rangeEnd,
+    undefined,
+    protocolId,
+    useDirectBlockRange,
+    specificChain
+  );
   if (!result.success) {
     process.exit(1);
   }
