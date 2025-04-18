@@ -364,7 +364,7 @@ export const getPriceDataByProtocolId = async (protocolId: number) => {
 
         const checkFields = {
           colUSDPriceFeed: entry.colUSDPriceFeed,
-          colUSDOracle: entry.colUSDOracle,
+          // colUSDOracle: entry.colUSDOracle,
         };
 
         Object.entries(checkFields).forEach(([field, value]) => {

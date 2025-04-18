@@ -61,7 +61,7 @@ export async function insertEntriesFromAdapter(
 
 function validateRows(rows: any[], allowNullDbValues: boolean) {
   // Define keys that are allowed to be null
-  const allowedNullKeys = ["operation"];
+  const allowedNullKeys = ["operation", "nativeToken"];
 
   const logger = ErrorLoggerService.getInstance();
   if (!allowNullDbValues) {
