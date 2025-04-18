@@ -8,11 +8,24 @@ import {
   getTroveManagersForProtocol,
 } from "../db/read";
 
-export async function getLatestTroveData(protocolId: number, chain: string, attachPoolData?: boolean) {
-  const troveManagers = await getTroveManagersForProtocol(protocolId, chain);
+export async function getLatestTroveData(
+  protocolId: number,
+  chain: string,
+  troveManagerIndex?: number,
+  attachPoolData?: boolean
+) {
+  let troveManagers = await getTroveManagersForProtocol(protocolId, chain);
 
   if (!troveManagers || troveManagers.length === 0) {
     return null;
+  }
+
+  if (troveManagerIndex !== undefined) {
+    troveManagers = troveManagers.filter((manager) => manager.troveManagerIndex === troveManagerIndex);
+
+    if (troveManagers.length === 0) {
+      return [];
+    }
   }
 
   const allTroveData = [];
@@ -93,13 +106,20 @@ const handler = async (event: AWSLambda.APIGatewayEvent): Promise<IResponse> => 
   const protocolId = parseInt(event.pathParameters?.protocolId ?? "0");
   const chain = event.pathParameters?.chain;
   const attachPoolData = event.queryStringParameters?.attachPoolData === "true";
+  const troveManagerIndexParam = event.queryStringParameters?.troveManagerIndex;
+  const troveManagerIndex =
+    troveManagerIndexParam !== undefined
+      ? isNaN(parseInt(troveManagerIndexParam))
+        ? undefined
+        : parseInt(troveManagerIndexParam)
+      : undefined;
 
   if (!(typeof protocolId === "number") || protocolId === 0 || !chain) {
     return errorResponse({
       message: "protocolId and chain must be provided as path parameters",
     });
   }
-  const response = (await getLatestTroveData(protocolId, chain, attachPoolData)) ?? [];
+  const response = (await getLatestTroveData(protocolId, chain, troveManagerIndex, attachPoolData)) ?? [];
   return successResponse(response, 10 * 60); // 10 mins cache
 };
 
