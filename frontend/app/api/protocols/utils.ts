@@ -221,17 +221,10 @@ export function formatProtocolData(
           }
         }
 
-        // Skip if not enough data points
-        if (
-          !poolDataPoints?.length ||
-          !priceDataPoints?.length ||
-          poolDataPoints.length < 2 ||
-          priceDataPoints.length < 2
-        ) {
-          return;
+        if (!poolDataPoints?.length || !priceDataPoints?.length) {
+          return; // Skip if no data points
         }
 
-        // Get decimal values from colImmutables
         const collTokenDecimals = parseInt(
           colImmutables.collTokenDecimals || "18",
           10
@@ -244,7 +237,7 @@ export function formatProtocolData(
 
         if (!latestPoolData || !latestPriceData) return;
 
-        // Calculate current metrics - only process the essential ones
+        // Calculate current metrics - process even with single data point
         calculateCurrentMetrics(
           troveManager,
           latestPoolData,
@@ -252,13 +245,16 @@ export function formatProtocolData(
           decimalsMultiplier
         );
 
-        // Calculate previous metrics using the helper function
-        calculatePreviousMetricsForTrove(
-          troveManager,
-          poolDataPoints,
-          priceDataPoints,
-          decimalsMultiplier
-        );
+        // Only calculate previous metrics if we have enough historical data
+        if (poolDataPoints.length >= 2 && priceDataPoints.length >= 2) {
+          // Calculate previous metrics using the helper function
+          calculatePreviousMetricsForTrove(
+            troveManager,
+            poolDataPoints,
+            priceDataPoints,
+            decimalsMultiplier
+          );
+        }
 
         // Process trove data for interest rates and liquidation prices
         processAdvancedTroveMetrics(troveManager, troveData, colImmutables);
