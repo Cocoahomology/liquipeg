@@ -25,10 +25,31 @@ export async function getTroveDataSummaryChart(
 
   const { dates, summaryData } = rawData;
 
-  const troveDataByDay = dates
-    .filter((dateInfo) => summaryData[dateInfo.timestamp] !== undefined) // Filter out dates with no trove data
-    .map((dateInfo) => {
-      const { timestamp } = dateInfo;
+  // Find min and max timestamps to ensure we have entries for all days
+  let minTimestamp = Infinity;
+  let maxTimestamp = 0;
+
+  for (const dateInfo of dates) {
+    if (dateInfo.timestamp < minTimestamp) minTimestamp = dateInfo.timestamp;
+    if (dateInfo.timestamp > maxTimestamp) maxTimestamp = dateInfo.timestamp;
+  }
+
+  // Create an array of all daily timestamps in the range
+  const allDailyTimestamps: number[] = [];
+  if (minTimestamp !== Infinity && maxTimestamp !== 0) {
+    for (let ts = minTimestamp; ts <= maxTimestamp; ts += 86400) {
+      allDailyTimestamps.push(ts);
+    }
+  } else if (dates.length > 0) {
+    allDailyTimestamps.push(...dates.map((d) => d.timestamp));
+  }
+
+  const troveDataByDay = allDailyTimestamps.map((timestamp) => {
+    // Find the dateInfo for this timestamp if it exists
+    const dateInfo = dates.find((d) => d.timestamp === timestamp);
+
+    // If we have data for this timestamp, process it as before
+    if (dateInfo && summaryData[timestamp]) {
       const rawTroveData = summaryData[timestamp];
 
       // Clean the trove data by removing null/empty values
@@ -49,7 +70,14 @@ export async function getTroveDataSummaryChart(
         timestamp,
         troveData: cleanedTroveData,
       };
-    });
+    }
+
+    // For missing timestamps, create a placeholder entry with null values
+    return {
+      timestamp,
+      troveData: {},
+    };
+  });
 
   return {
     protocolId: rawData.protocolId,

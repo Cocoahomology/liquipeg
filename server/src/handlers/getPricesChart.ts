@@ -25,10 +25,32 @@ export async function getPricesChart(
   if (!rawData) return null;
   const { dates, priceData } = rawData;
 
-  const priceDataByDay = dates
-    .filter((dateInfo) => priceData[dateInfo.timestamp] !== undefined) // Filter out dates with no price data
-    .map((dateInfo) => {
-      const { date, timestamp } = dateInfo;
+  // Find min and max timestamps to ensure we have entries for all days
+  let minTimestamp = Infinity;
+  let maxTimestamp = 0;
+
+  for (const dateInfo of dates) {
+    if (dateInfo.timestamp < minTimestamp) minTimestamp = dateInfo.timestamp;
+    if (dateInfo.timestamp > maxTimestamp) maxTimestamp = dateInfo.timestamp;
+  }
+
+  // Create an array of all daily timestamps in the range
+  const allDailyTimestamps: number[] = [];
+  if (minTimestamp !== Infinity && maxTimestamp !== 0) {
+    for (let ts = minTimestamp; ts <= maxTimestamp; ts += 86400) {
+      allDailyTimestamps.push(ts);
+    }
+  } else if (dates.length > 0) {
+    allDailyTimestamps.push(...dates.map((d) => d.timestamp));
+  }
+
+  const priceDataByDay = allDailyTimestamps.map((timestamp) => {
+    // Find the dateInfo for this timestamp if it exists
+    const dateInfo = dates.find((d) => d.timestamp === timestamp);
+
+    // If we have data for this timestamp, process it as before
+    if (dateInfo && priceData[timestamp]) {
+      const { date } = dateInfo;
       const rawPriceData = priceData[timestamp];
 
       // Clean the price data by removing null/empty values
@@ -50,7 +72,15 @@ export async function getPricesChart(
         timestamp,
         priceData: cleanedPriceData,
       };
-    });
+    }
+
+    // For missing timestamps, create a placeholder entry with null values
+    return {
+      date: new Date(timestamp * 1000).toISOString().split("T")[0], // Format as YYYY-MM-DD
+      timestamp,
+      priceData: {},
+    };
+  });
 
   return {
     protocolId: rawData.protocolId,
