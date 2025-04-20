@@ -467,9 +467,9 @@ async function insertCorePoolData(
       } catch (error) {
         if (error instanceof Error) {
           logFirstError(error, chain);
-          throw error;
+          console.error(error);
         }
-        throw error;
+        console.error(error);
       }
     });
   } catch (error) {
