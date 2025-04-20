@@ -44,7 +44,11 @@ const CollateralCards = ({
                   Collateral:
                 </span>
                 <span className="font-medium">
-                  {tm.currentCol ? parseFloat(tm.currentCol).toFixed(2) : "0"}
+                  {tm.currentCol
+                    ? `${parseFloat(tm.currentCol).toFixed(2)} ${
+                        tm.collateralSymbol
+                      }`
+                    : "0"}
                 </span>
               </div>
               <div className="flex justify-between">
