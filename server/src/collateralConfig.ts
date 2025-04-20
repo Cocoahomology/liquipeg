@@ -85,7 +85,7 @@ export const collateralConfigs: ProtocolCollateralConfig = {
       LSTUnderlyingMarketRateOracle: { address: "0x536218f9E9Eb48863970252233c8F271f554C2d0", oracleType: "chainlink" },
     },
   },
-  "2-hyperevm": {
+  "2-hyperliquid": {
     0: {
       priceFeedType: "mainnet",
       priceFeedLastGoodPriceDecimals: 18,

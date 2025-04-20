@@ -15,6 +15,6 @@ export default [
     protocolDbName: "felix",
     iconLink: "felix",
     url: "",
-    chains: ["hyperevm"],
+    chains: ["hyperliquid"],
   },
 ] as Protocol[];

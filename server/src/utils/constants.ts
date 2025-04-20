@@ -16,5 +16,5 @@ export const maxBlocksToQueryByChain = {
   bsc: 1800,
   optimism: 2700,
   gnosis: 1080,
-  hyperevm: 900,
+  hyperliquid: 900,
 } as { [chain: string]: number };
