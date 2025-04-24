@@ -23,12 +23,17 @@ import {
 export default function Home() {
   const [currentPage, setCurrentPage] = useState("protocols");
   const [loading, setLoading] = useState(false);
-  const [changePeriod, setChangePeriod] = useState("1d"); // Default to 1d
+  const [changePeriod, setChangePeriod] = useState<
+    "none" | "1d" | "7d" | "30d"
+  >("1d"); // Default to 1d
 
   // Use useCallback to memoize the changePeriod handler
-  const handleChangePeriod = useCallback((value: string) => {
-    setChangePeriod(value);
-  }, []);
+  const handleChangePeriod = useCallback(
+    (value: "none" | "1d" | "7d" | "30d") => {
+      setChangePeriod(value);
+    },
+    []
+  );
 
   const handleTestClick = async () => {
     try {
@@ -97,7 +102,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right side with buttons only */}
+            {/* Right side with buttons only 
             <div className="flex items-center gap-4">
               <Button
                 variant="outline"
@@ -109,6 +114,7 @@ export default function Home() {
               </Button>
               <ThemeToggle />
             </div>
+            */}
           </div>
         </div>
       </div>

@@ -168,9 +168,6 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
 
   // Get chart data for selected protocol or trove manager
   const selectedChartData = useMemo(() => {
-    console.log("selectedProtocolId:", selectedProtocolId);
-    console.log("selectedTroveManagerIndex:", selectedTroveManagerIndex);
-    console.log("enhancedData length:", enhancedData?.length);
     console.log("ENHANCED DATA", enhancedData);
 
     if (!selectedProtocolId || !enhancedData?.length) {
@@ -268,11 +265,6 @@ export function ProtocolsPage({ changePeriod = "1d" }: ProtocolsPageProps) {
   const handleSelectItem = (item: any) => {
     setSelectedProtocolId(item.id);
     setSelectedTroveManagerIndex(item.index !== undefined ? item.index : null);
-    console.log(
-      `Selected protocol ID: ${item.id}, trove manager index: ${
-        item.index !== undefined ? item.index : "none"
-      }`
-    );
   };
 
   async function calculateLiquidityDepthData(

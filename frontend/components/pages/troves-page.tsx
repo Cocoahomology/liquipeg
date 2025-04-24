@@ -137,8 +137,6 @@ export function TrovesPage() {
   // Get the selected protocol object
   const selectedProtocolInfo = useMemo(() => {
     if (!selectedProtocol) return null;
-    console.log("Selected protocol:", selectedProtocol);
-    console.log("Protocol data:", protocolData);
     return Object.values(protocolData).find(
       (p: any) => p.displayName === selectedProtocol
     ) as Protocol | null;
@@ -154,7 +152,7 @@ export function TrovesPage() {
 
     try {
       const formatted = formatTroveDataForUI(trovesData);
-      console.log("FINAL FORMATTED TROVES DATA", formatted);
+      // console.log("FINAL FORMATTED TROVES DATA", formatted);
       return formatted;
     } catch (error) {
       console.error("Error formatting troves data:", error);

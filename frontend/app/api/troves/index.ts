@@ -102,6 +102,7 @@ export async function fetchRawTroveDataForProtocol(protocol: any) {
 export async function getTrovesPageData(protocolInfo: any) {
   const rawTroveData = await fetchRawTroveDataForProtocol(protocolInfo);
   const formattedTroveData = formatTroveData(rawTroveData);
-  console.log("FORMATTED TROVE DATA:", formattedTroveData);
+  // console.log("FORMATTED TROVE DATA:", formattedTroveData);
+  // FIX: is this not incorrect?
   return rawTroveData;
 }

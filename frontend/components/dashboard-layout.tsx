@@ -65,12 +65,6 @@ export function DashboardLayout({
     number | null
   >(selectedTroveManagerIndex);
 
-  // Add debug logging
-  console.log(
-    "DashboardLayout received selectedItemChartData:",
-    selectedItemChartData
-  );
-
   // Get the current theme from next-themes
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
@@ -82,7 +76,6 @@ export function DashboardLayout({
 
     // If the nullity status changed (null to not null or vice versa)
     if (wasNull !== isNull) {
-      console.log("Clearing charts due to trove manager selection change");
       setCharts([]);
     }
 
@@ -267,12 +260,6 @@ export function DashboardLayout({
           </div>
         ) : (
           charts.map((chart) => {
-            console.log(
-              "Rendering chart with ID:",
-              chart.id,
-              "and passing chartData:",
-              selectedItemChartData
-            );
             return (
               <ChartContainer
                 key={chart.id}
