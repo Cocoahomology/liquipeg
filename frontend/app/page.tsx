@@ -102,8 +102,8 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right side with buttons only 
             <div className="flex items-center gap-4">
+              {/*}
               <Button
                 variant="outline"
                 size="sm"
@@ -112,9 +112,9 @@ export default function Home() {
               >
                 {loading ? "Loading..." : "Test API"}
               </Button>
+              */}
               <ThemeToggle />
             </div>
-            */}
           </div>
         </div>
       </div>
