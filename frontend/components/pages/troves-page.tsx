@@ -33,7 +33,7 @@ const CollateralCards = ({
         <Card key={tm.id} className="w-full">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-xl">{tm.collateralSymbol}</CardTitle>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
               {tm.troveCount === 1 ? "1 trove" : `${tm.troveCount} troves`}
             </span>
           </CardHeader>
@@ -45,7 +45,7 @@ const CollateralCards = ({
                 </span>
                 <span className="font-medium">
                   {tm.currentCol
-                    ? `${parseFloat(tm.currentCol).toFixed(2)} ${
+                    ? `${parseFloat(tm.currentCol).toFixed(0)} ${
                         tm.collateralSymbol
                       }`
                     : "0"}
