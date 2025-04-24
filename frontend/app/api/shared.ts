@@ -7,6 +7,8 @@ import {
 
 const defaultChartDaysToFetch = 60;
 
+const PROTOCOLS_TO_IGNORE = [1] as const;
+
 export const fetchWithRetries = async <T>(
   fetchFn: () => Promise<T>,
   errorMsg: string,
@@ -32,17 +34,25 @@ export const fetchWithRetries = async <T>(
 };
 
 export const getProtocols = async (protocolId?: number) => {
-  fetch(PROTOCOL_CONFIG_API).then((r) => r.json());
   try {
+    let data;
     if (protocolId !== undefined) {
-      return await fetch(
+      data = await fetch(
         `${PROTOCOL_CONFIG_API}?protocolId=${protocolId}`
       ).then((resp) => resp.json());
+      return data;
     } else {
-      return await fetch(`${PROTOCOL_CONFIG_API}`).then((resp) => resp.json());
+      data = await fetch(`${PROTOCOL_CONFIG_API}`).then((resp) => resp.json());
+      // Filter out ignored protocols
+      return Array.isArray(data)
+        ? data.filter(
+            (protocol) => !PROTOCOLS_TO_IGNORE.includes(protocol.protocolId)
+          )
+        : data;
     }
   } catch (error) {
     console.error("Failed to fetch protocols:", error);
+    return [];
   }
 };
 
