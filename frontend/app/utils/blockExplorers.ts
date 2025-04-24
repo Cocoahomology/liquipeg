@@ -3,11 +3,13 @@ import { capitalizeFirstLetter } from ".";
 const blockExplorersTxs = {
   ethereum: ["https://etherscan.io/tx/", "Etherscan"],
   arbitrum: ["https://arbiscan.io/tx/", "Arbiscan"],
+  hyperliquid: ["https://purrsec.com/tx/", "Purrsec"],
 };
 
 const blockExplorersAddresses = {
   ethereum: ["https://etherscan.io/address/", "Etherscan"],
   arbitrum: ["https://arbiscan.io/address/", "Arbiscan"],
+  hyperliquid: ["https://purrsec.com/address/", "Purrsec"],
 };
 
 export const getBlockExplorerForTx = (txHash: string = "") => {

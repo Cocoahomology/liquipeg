@@ -96,8 +96,6 @@ export function ChartContainer({
   const lstDetailsData = chartData?.lstDetailsData || { series: [] };
   const liqDepthData = chartData?.liqDepthData || { series: [] }; // Add this line
 
-  console.log("Chart data received:", chartData);
-
   // Only show LST Details and Liquidity Depth when trove manager is selected
   const availableChartTypes =
     selectedTroveManagerIndex !== null
