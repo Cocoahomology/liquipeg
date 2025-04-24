@@ -54,7 +54,7 @@ provider:
 functions:
   fillMissingBlockTimestamps:
     handler: src/handlers/fillMissingBlockTimestamps.default
-    timeout: 120
+    timeout: 900
     memorySize: 1024
     events:
       - schedule: cron(3 0,12 * * ? *)

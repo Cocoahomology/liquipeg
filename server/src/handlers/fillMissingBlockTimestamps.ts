@@ -10,8 +10,21 @@ import { maxBlocksToQueryByChain } from "../utils/constants";
 const handler = async (_event: any) => {
   const blockTimestampEntries = await getBlocksWithMissingTimestamps();
 
+  console.log(`Total chains with missing timestamps: ${Object.keys(blockTimestampEntries).length}`);
+  let totalEntries = 0;
+  Object.values(blockTimestampEntries).forEach((entries) => {
+    totalEntries += entries.length;
+  });
+  console.log(`Total block entries with missing timestamps: ${totalEntries}`);
+
   await Promise.allSettled(
     Object.entries(blockTimestampEntries).map(async ([chain, blockEntries]) => {
+      // Limit to first 600 entries
+      const limitedBlockEntries = blockEntries.slice(0, 600);
+      console.log(
+        `Processing chain ${chain}: ${limitedBlockEntries.length} of ${blockEntries.length} entries (limited to 600)`
+      );
+
       const provider = await sdk.getProvider(chain);
       const blockTimestamps = {} as Record<number, number>;
       const minBlockInterval = Math.floor((maxBlocksToQueryByChain[chain] || maxBlocksToQueryByChain.default) / 10);
@@ -19,7 +32,7 @@ const handler = async (_event: any) => {
       let lastTimestamp: number | null = null;
       let lastBlockNumber: number | null = null;
 
-      await PromisePool.for(blockEntries)
+      await PromisePool.for(limitedBlockEntries)
         .withConcurrency(2) // FIX: adjust
         .process(async (entry) => {
           const blockNumber = entry.blockNumber;
@@ -60,8 +73,11 @@ const handler = async (_event: any) => {
         timestamp,
       }));
       await insertBlockTimestampEntries(chain, blockTimestampsList);
+      console.log(`Completed processing for chain ${chain}: saved ${blockTimestampsList.length} timestamps`);
     })
   );
+
+  console.log("Block timestamp processing complete");
 };
 
 export default wrapScheduledLambda(handler);
