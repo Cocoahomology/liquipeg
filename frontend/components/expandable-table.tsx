@@ -4,12 +4,19 @@ import React, { useState, useCallback, useMemo } from "react";
 import {
   type ColumnDef,
   type ExpandedState,
+  type SortingState,
   flexRender,
   getCoreRowModel,
   getExpandedRowModel,
+  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight, BarChart2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  BarChart2,
+  ArrowUpDown,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -306,13 +313,10 @@ const ProtocolTroveManagersTable = React.memo(
           const maxLiqPrice = row.getValue("maxLiqPrice");
           const currentOraclePrice = row.getValue("currentColUSDOracle");
 
-          if (!maxLiqPrice || !currentOraclePrice)
-            return <div className="text-right">N/A</div>;
+          // If no maxLiqPrice exists, show N/A
+          if (!maxLiqPrice) return <div className="text-right">N/A</div>;
 
           const maxLiqPriceValue = Number.parseFloat(maxLiqPrice as string);
-          const oraclePriceValue = Number.parseFloat(
-            currentOraclePrice as string
-          );
 
           const formatted = new Intl.NumberFormat("en-US", {
             style: "currency",
@@ -320,15 +324,23 @@ const ProtocolTroveManagersTable = React.memo(
             maximumFractionDigits: 2,
           }).format(maxLiqPriceValue);
 
-          // Calculate the ratio of oracle price to maxLiqPrice multiplied by 100
-          const ratio = (oraclePriceValue / maxLiqPriceValue) * 100;
+          // Only calculate ratio and apply highlighting if currentOraclePrice exists
+          let highlightClass = "";
+          if (currentOraclePrice) {
+            const oraclePriceValue = Number.parseFloat(
+              currentOraclePrice as string
+            );
 
-          // Use getThresholdHighlight to determine the highlight class
-          const highlightClass = getThresholdHighlight(
-            ratio,
-            100, // Base percentage for comparison
-            thresholds.maxLiqPrice
-          );
+            // Calculate the ratio of oracle price to maxLiqPrice multiplied by 100
+            const ratio = (oraclePriceValue / maxLiqPriceValue) * 100;
+
+            // Use getThresholdHighlight to determine the highlight class
+            highlightClass = getThresholdHighlight(
+              ratio,
+              100, // Base percentage for comparison
+              thresholds.maxLiqPrice
+            );
+          }
 
           return (
             <div
@@ -357,10 +369,13 @@ const ProtocolTroveManagersTable = React.memo(
     ];
 
     // Use useMemo to prevent unnecessary recalculations
-    const tableData = useMemo(
-      () => Object.values(troveManagers),
-      [troveManagers]
-    );
+    const tableData = useMemo(() => {
+      // Ensure troveManagers is treated as an object and convert it to an array
+      if (typeof troveManagers === "object" && troveManagers !== null) {
+        return Object.values(troveManagers);
+      }
+      return [];
+    }, [troveManagers]);
 
     const table = useReactTable<any>({
       data: tableData,
@@ -451,6 +466,8 @@ export function ExpandableTable({
 }: ExpandableTableProps) {
   // State for expanded rows
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  // Add state for sorting
+  const [sorting, setSorting] = useState<SortingState>([]);
 
   // Memoize handlers to prevent unnecessary re-renders
   const handleExpandedChange = useCallback((newExpanded: ExpandedState) => {
@@ -531,6 +548,15 @@ export function ExpandableTable({
       {
         accessorKey: "chain",
         header: "Chain",
+        cell: ({ row }) => {
+          // FIX: Capitalize first letter of chain name until backend provides proper formatting
+          const chainValue = row.getValue("chain") as string;
+          const capitalizedChain = chainValue
+            ? chainValue.charAt(0).toUpperCase() + chainValue.slice(1)
+            : chainValue;
+
+          return <div>{capitalizedChain}</div>;
+        },
       },
       {
         accessorKey: "tvl",
@@ -644,14 +670,31 @@ export function ExpandableTable({
       },
       {
         accessorKey: "collateral",
-        header: "Collateral",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-start"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Collateral
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => (
           <div className="font-medium">{row.getValue("collateral")}</div>
         ),
+        sortingFn: "alphanumeric",
       },
       {
         accessorKey: "debtAmount",
-        header: "Debt",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-end"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Debt
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => {
           const debt = Number.parseFloat(row.getValue("debtAmount"));
           const formatted = new Intl.NumberFormat("en-US", {
@@ -661,10 +704,19 @@ export function ExpandableTable({
           }).format(debt);
           return <div className="text-right font-medium">{formatted}</div>;
         },
+        sortingFn: "basic",
       },
       {
         accessorKey: "debtInFront",
-        header: "Debt In Front",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-end"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Debt In Front
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => {
           const debtInFront = Number.parseFloat(row.getValue("debtInFront"));
           const formatted = new Intl.NumberFormat("en-US", {
@@ -675,19 +727,37 @@ export function ExpandableTable({
           }).format(debtInFront);
           return <div className="text-right font-medium">{formatted}</div>;
         },
+        sortingFn: "basic",
       },
       {
         accessorKey: "collateralRatio",
-        header: "Coll. Ratio",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-end"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Coll. Ratio
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => {
           const ratio = Number.parseFloat(row.getValue("collateralRatio"));
           return <div className="text-right">{ratio.toFixed(0)}%</div>;
         },
+        sortingFn: "basic",
       },
       // Add liquidation price column
       {
         accessorKey: "liquidationPrice",
-        header: "Liq. Price",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-end"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Liq. Price
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => {
           const liquidationPrice = Number.parseFloat(
             row.getValue("liquidationPrice")
@@ -699,15 +769,25 @@ export function ExpandableTable({
           }).format(liquidationPrice);
           return <div className="text-right">{formatted}</div>;
         },
+        sortingFn: "basic",
       },
       // Add interest rate column
       {
         accessorKey: "interestRate",
-        header: "Interest Rate",
+        header: ({ column }) => (
+          <div
+            className="cursor-pointer flex items-center justify-end"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Interest Rate
+            <ArrowUpDown className="ml-1 h-3 w-3" />
+          </div>
+        ),
         cell: ({ row }) => {
           const interestRate = Number.parseFloat(row.getValue("interestRate"));
           return <div className="text-right">{interestRate.toFixed(2)}%</div>;
         },
+        sortingFn: "basic",
       },
       {
         accessorKey: "status",
@@ -763,6 +843,15 @@ export function ExpandableTable({
       {
         accessorKey: "chain",
         header: "Chain",
+        cell: ({ row }) => {
+          // TEMPORARY: Capitalize first letter of chain name until backend provides proper formatting
+          const chainValue = row.getValue("chain") as string;
+          const capitalizedChain = chainValue
+            ? chainValue.charAt(0).toUpperCase() + chainValue.slice(1)
+            : chainValue;
+
+          return <div>{capitalizedChain}</div>;
+        },
       },
       {
         accessorKey: "tvl",
@@ -951,20 +1040,32 @@ export function ExpandableTable({
     getChangeColor,
   ]);
 
+  // Use useMemo to prevent unnecessary recalculations
+  const tableData = useMemo(() => {
+    // Ensure data exists and is an array
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+    return data;
+  }, [data]);
+
   // Instead of using useMemo to call useReactTable, memoize the config
   const tableConfig = useMemo(
     () => ({
-      data,
+      data: tableData,
       columns: columns as ColumnDef<unknown, any>[],
       state: {
         expanded,
+        sorting,
       },
       onExpandedChange: handleExpandedChange,
+      onSortingChange: setSorting,
       getSubRows: () => undefined,
       getCoreRowModel: getCoreRowModel(),
       getExpandedRowModel: getExpandedRowModel(),
+      getSortedRowModel: getSortedRowModel(),
     }),
-    [data, columns, expanded, handleExpandedChange]
+    [tableData, columns, expanded, sorting, handleExpandedChange]
   );
 
   // Call useReactTable directly at the top level with the memoized config
@@ -983,10 +1084,15 @@ export function ExpandableTable({
                   header.column.id === "owner" ||
                   header.column.id === "collateral";
 
+                // Determine if this header has sorting enabled
+                const isSortable = header.column.getCanSort();
+
                 return (
                   <TableHead
                     key={header.id}
-                    className={isNameOrChain ? "" : "text-right"}
+                    className={`${isNameOrChain ? "" : "text-right"} ${
+                      isSortable ? "cursor-pointer select-none" : ""
+                    }`}
                   >
                     {header.isPlaceholder
                       ? null
@@ -1039,7 +1145,7 @@ export function ExpandableTable({
                             row.original !== null &&
                             "troveManagers" in row.original && (
                               <ProtocolTroveManagersTable
-                                troveManagers={row.original.troveManagers || {}}
+                                troveManagers={row.original.troveManagers}
                                 onSelectItem={handleSelectItem}
                                 changePeriod={changePeriod}
                               />
