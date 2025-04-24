@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,8 +88,16 @@ export function ChartContainer({
   redemptionEvents = [], // Default to empty array
 }: ChartContainerProps) {
   const [isHovering, setIsHovering] = useState(false);
-  const { theme } = useTheme();
-  const isDarkMode = theme === "dark";
+  const { theme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Detect if dark mode is active - use resolvedTheme for SSR compatibility
+  const isDarkMode = resolvedTheme === "dark";
+
+  // Handle client-side mounting to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const crDaData = chartData?.crDaData || { series: [] };
   const pricesLiqsData = chartData?.pricesLiqsData || { series: [] };
@@ -106,6 +114,68 @@ export function ChartContainer({
 
   const ChartIcon =
     chartTypes.find((type) => type.value === chartType)?.icon || BarChart;
+
+  // Don't render charts until client-side mounted to ensure theme is correct
+  if (!mounted) {
+    return (
+      <Card className="relative">
+        <CardHeader className="py-3 flex flex-row items-center justify-between">
+          <div className="flex items-center">
+            <ChartIcon className="h-4 w-4 mr-2 text-muted-foreground" />
+            <CardTitle className="text-sm">
+              {chartTitles[dataType][chartType]}
+            </CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={chartType}
+              onValueChange={(value) =>
+                onChangeType(
+                  value as
+                    | "crDa"
+                    | "pricesLiqs"
+                    | "lstDetails"
+                    | "liquidationEvents"
+                    | "redemptionEvents"
+                    | "liqDepth"
+                )
+              }
+            >
+              <SelectTrigger className="w-[160px] h-8">
+                <SelectValue
+                  placeholder="Select chart type"
+                  className="whitespace-nowrap overflow-hidden text-ellipsis"
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {availableChartTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    <div className="flex items-center whitespace-nowrap">
+                      <type.icon className="h-4 w-4 mr-2 flex-shrink-0" />
+                      {type.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={onRemove}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="py-2">
+          <div className="flex items-center justify-center h-[250px]">
+            <span className="text-muted-foreground">Loading chart...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card

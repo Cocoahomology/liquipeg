@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -47,8 +47,16 @@ export function LogChart({
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
   const prevDarkModeRef = useRef<boolean>(darkMode);
+  const [mounted, setMounted] = useState(false);
+
+  // Effect for client-side mounting
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return; // Skip chart initialization until component is mounted
+
     // Check if dark mode changed - if so, dispose and recreate chart
     if (prevDarkModeRef.current !== darkMode && chartInstance.current) {
       chartInstance.current.dispose();
@@ -263,6 +271,7 @@ export function LogChart({
     darkMode,
     dateFormat,
     axisFormatter,
+    mounted, // Add mounted to dependencies
   ]);
 
   // Check if there's any data to display

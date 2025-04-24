@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -51,15 +51,23 @@ export function DualAxisChart({
   height = 400,
   darkMode = true,
   dateFormat = "short",
-  rightAxisFormatter = "percentage", // Default to percentage format
-  leftAxisFormatter = "currency", // Default to currency format
-  emptyMessage = "No data available", // Default empty message
+  rightAxisFormatter = "percentage",
+  leftAxisFormatter = "currency",
+  emptyMessage = "No data available",
 }: DualAxisChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
-  const prevDarkModeRef = useRef<boolean>(darkMode); // Track previous dark mode state
+  const prevDarkModeRef = useRef<boolean>(darkMode);
+  const [mounted, setMounted] = useState(false);
+
+  // Effect for client-side mounting
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return; // Skip chart initialization until component is mounted
+
     // Check if dark mode changed - if so, dispose and recreate chart
     if (prevDarkModeRef.current !== darkMode && chartInstance.current) {
       chartInstance.current.dispose();
@@ -487,6 +495,7 @@ export function DualAxisChart({
     dateFormat,
     rightAxisFormatter,
     leftAxisFormatter,
+    mounted, // Add mounted to dependencies
   ]);
 
   // Check if there's any data to display

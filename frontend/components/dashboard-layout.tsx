@@ -50,9 +50,9 @@ export function DashboardLayout({
   changePeriod = "none",
   onSelectItem,
   selectedItemChartData,
-  selectedTroveManagerIndex = null, // Add this parameter with default value
-  liquidationEvents = [], // Add default value
-  redemptionEvents = [], // Add default value
+  selectedTroveManagerIndex = null,
+  liquidationEvents = [],
+  redemptionEvents = [],
 }: DashboardLayoutProps) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -66,8 +66,16 @@ export function DashboardLayout({
   >(selectedTroveManagerIndex);
 
   // Get the current theme from next-themes
-  const { theme } = useTheme();
-  const isDarkMode = theme === "dark";
+  const { theme, resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark";
+
+  // Add a mounting state to ensure theme is properly detected
+  const [mounted, setMounted] = useState(false);
+
+  // Handle client-side mounting
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Effect to clear charts when selectedTroveManagerIndex changes between null and non-null
   useEffect(() => {
@@ -236,6 +244,14 @@ export function DashboardLayout({
   }, [customTitle, selectedItem]);
 
   const renderChartContent = () => {
+    if (!mounted) {
+      return (
+        <div className="flex items-center justify-center h-[300px]">
+          <span className="text-muted-foreground">Loading charts...</span>
+        </div>
+      );
+    }
+
     if (customChartPanel) {
       return customChartPanel;
     }
