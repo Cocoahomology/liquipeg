@@ -62,7 +62,7 @@ const getBlocksForRunningAdapter = async (
     return { startBlock, endBlock };
   }
 
-  const maxBlocksToQuery = maxBlocksToQueryByChain[chain] ?? maxBlocksToQueryByChain.default * 10;
+  const maxBlocksToQuery = (maxBlocksToQueryByChain[chain] ?? maxBlocksToQueryByChain.default) * 10;
   let lastRecordedEndBlock = recordedBlocks.endBlock;
   if (!lastRecordedEndBlock) {
     const defaultStartBlock = endBlock - maxBlocksToQuery;
