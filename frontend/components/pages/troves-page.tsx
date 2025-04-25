@@ -212,6 +212,7 @@ export function TrovesPage() {
         const trovesWithCollateralType = troveManager.troveData.map((trove) => {
           return {
             id: trove.troveId,
+            chain: trove.chain,
             owner: trove.ownerAddress,
             collateral: `${parseFloat(trove.coll).toFixed(4)} ${
               troveManager.collateralSymbol

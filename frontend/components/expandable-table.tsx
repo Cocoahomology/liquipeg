@@ -647,24 +647,35 @@ export function ExpandableTable({
         header: "Owner",
         cell: ({ row }) => {
           const address = row.getValue("owner") as string;
-          const chain = row.original.chain || "ethereum"; // Get the chain from the trove data
-          const formattedAddress = `${chain}:${address}`;
-          const { blockExplorerLink } =
-            getBlockExplorerForAddress(formattedAddress);
+          const chain = row.original.chain;
+          const shortenedAddress = `${address.substring(
+            0,
+            4
+          )}...${address.substring(address.length - 3)}`;
 
+          // Only generate block explorer link if chain exists
+          if (chain) {
+            const formattedAddress = `${chain}:${address}`;
+            const { blockExplorerLink } =
+              getBlockExplorerForAddress(formattedAddress);
+
+            return (
+              <div className="font-mono text-xs truncate">
+                <a
+                  href={blockExplorerLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 hover:text-blue-700 hover:underline"
+                >
+                  {shortenedAddress}
+                </a>
+              </div>
+            );
+          }
+
+          // If chain doesn't exist, return plain text
           return (
-            <div className="font-mono text-xs truncate">
-              <a
-                href={blockExplorerLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:text-blue-700 hover:underline"
-              >
-                {`${address.substring(0, 4)}...${address.substring(
-                  address.length - 3
-                )}`}
-              </a>
-            </div>
+            <div className="font-mono text-xs truncate">{shortenedAddress}</div>
           );
         },
       },
@@ -1010,6 +1021,7 @@ export function ExpandableTable({
           const formatted = new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "USD",
+            notation: "compact",
             maximumFractionDigits: 2,
           }).format(redemption);
 
