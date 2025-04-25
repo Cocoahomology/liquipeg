@@ -57,19 +57,19 @@ functions:
     timeout: 900
     memorySize: 1024
     events:
-      - schedule: cron(3 0,12 * * ? *)
+      - schedule: cron(3 0/2 * * ? *)
   fillTimeSamplePoints:
     handler: src/handlers/fillTimeSamplePoints.default
     timeout: 120
     memorySize: 1024
     events:
-      - schedule: cron(4 0,12 * * ? *)
+      - schedule: cron(4 0/2 * * ? *)
   fillTroveDataSummaries:
     handler: src/handlers/fillTroveDataSummaries.default
     timeout: 120
     memorySize: 1024
     events:
-      - schedule: cron(5 0,12 * * ? *)
+      - schedule: cron(5 0/2 * * ? *)
   getEvents:
     handler: src/handlers/getEvents.default
     timeout: 30
@@ -127,7 +127,7 @@ functions:
     timeout: 300
     memorySize: 250
     events:
-      - schedule: cron(1 0,12 * * ? *)
+      - schedule: cron(1 0/2 * * ? *)
   runPrices:
     handler: src/handlers/runPrices.default
     timeout: 300
@@ -137,7 +137,7 @@ functions:
     timeout: 300
     memorySize: 250
     events:
-      - schedule: cron(2 0,12 * * ? *)
+      - schedule: cron(2 0/2 * * ? *)
 
 # resources:
 #   # CORS for api gateway errors
